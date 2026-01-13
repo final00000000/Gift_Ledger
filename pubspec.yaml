@@ -1,0 +1,49 @@
+name: gift_money_tracker
+description: "份子钱记账 - 礼金收支追踪与管理"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.2.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  sqflite: ^2.3.0
+  sqflite_common_ffi: ^2.3.0  # 桌面端数据库支持
+  path_provider: ^2.1.1
+  intl: ^0.20.2
+  flutter_localizations:
+    sdk: flutter
+  shared_preferences: ^2.5.4
+  file_picker: ^8.0.0      # 文件选择器
+  excel: ^4.0.3            # Excel读写
+  share_plus: ^8.0.0       # 分享文件
+  permission_handler: ^11.0.0  # 权限管理
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+  flutter_launcher_icons: ^0.13.1
+
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path: "assets/icon/app_icon.jpg"
+  min_sdk_android: 21
+  web:
+    generate: true
+    image_path: "assets/icon/app_icon.jpg"
+    background_color: "#C62828"
+    theme_color: "#C62828"
+  windows:
+    generate: true
+    image_path: "assets/icon/app_icon.jpg"
+    icon_size: 48
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/icon/app_icon.jpg

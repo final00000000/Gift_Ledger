@@ -1,0 +1,51 @@
+# Auto detect text files and perform LF normalization
+* text=auto
+
+# Dart files
+*.dart text
+
+# YAML files
+*.yaml text
+*.yml text
+
+# Markdown files
+*.md text
+
+# JSON files
+*.json text
+
+# XML files
+*.xml text
+
+# Gradle files
+*.gradle text
+gradlew text
+
+# Shell scripts
+*.sh text eol=lf
+
+# Batch scripts
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Images
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+
+# Fonts
+*.ttf binary
+*.otf binary
+*.woff binary
+*.woff2 binary
+
+# Archives
+*.zip binary
+*.tar binary
+*.gz binary
+*.apk binary
+*.ipa binary
+*.aab binary
