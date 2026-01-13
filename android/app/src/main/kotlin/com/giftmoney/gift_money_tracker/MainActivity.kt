@@ -1,4 +1,4 @@
-package com.giftmoney.gift_money_tracker
+package com.giftmoney.gift_ledger
 
 import io.flutter.embedding.android.FlutterActivity
 

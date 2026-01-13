@@ -94,7 +94,7 @@ BEGIN
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "随礼记" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 com.giftmoney. All rights reserved." "\0"
-            VALUE "OriginalFilename", "gift_money_tracker.exe" "\0"
+            VALUE "OriginalFilename", "Gift_Ledger.exe" "\0"
             VALUE "ProductName", "随礼记" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END

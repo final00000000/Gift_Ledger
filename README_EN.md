@@ -50,20 +50,22 @@ English | [简体中文](./README.md)
 
 ## 📸 Screenshots
 
-### Home
-![Home](screenshots/home.jpg)
+<details>
+<summary>Click to expand screenshots</summary>
 
-### Add Record
-![Add Record](screenshots/add_record.jpg)
+| Home | Add Record |
+|:---:|:---:|
+| ![Home](screenshots/home.jpg) | ![Add Record](screenshots/add_record.jpg) |
 
-### Statistics
-![Statistics](screenshots/statistics.jpg)
+| Statistics | Statistics Details |
+|:---:|:---:|
+| ![Statistics](screenshots/statistics.jpg) | ![Statistics Details](screenshots/statistics_details.jpg) |
 
-### Statistics Details
-![Statistics Details](screenshots/statistics_details.jpg)
+| Settings |
+|:---:|
+| ![Settings](screenshots/settings.jpg) |
 
-### Settings
-![Settings](screenshots/settings.jpg)
+</details>
 
 ---
 
@@ -118,7 +120,7 @@ English | [简体中文](./README.md)
 ## 🏗️ Project Structure
 
 ```
-gift_money_tracker/
+Gift_Ledger/
 ├── lib/
 │   ├── main.dart                 # App entry point
 │   ├── models/                   # Data models

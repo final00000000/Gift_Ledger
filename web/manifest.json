@@ -1,6 +1,6 @@
 {
-    "name": "gift_money_tracker",
-    "short_name": "gift_money_tracker",
+    "name": "Gift_Ledger",
+    "short_name": "Gift_Ledger",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#C62828",

@@ -50,20 +50,22 @@
 
 ## 📸 应用截图
 
-### 首页
-![首页](screenshots/home.jpg)
+<details>
+<summary>点击展开查看应用截图</summary>
 
-### 添加记录
-![添加记录](screenshots/add_record.jpg)
+| 首页 | 添加记录 |
+|:---:|:---:|
+| ![首页](screenshots/home.jpg) | ![添加记录](screenshots/add_record.jpg) |
 
-### 数据统计
-![统计](screenshots/statistics.jpg)
+| 数据统计 | 统计详情 |
+|:---:|:---:|
+| ![统计](screenshots/statistics.jpg) | ![统计详情](screenshots/statistics_details.jpg) |
 
-### 统计详情
-![统计详情](screenshots/statistics_details.jpg)
+| 设置 |
+|:---:|
+| ![设置](screenshots/settings.jpg) |
 
-### 设置
-![设置](screenshots/settings.jpg)
+</details>
 
 ---
 
@@ -118,7 +120,7 @@
 ## 🏗️ 项目结构
 
 ```
-gift_money_tracker/
+Gift_Ledger/
 ├── lib/
 │   ├── main.dart                 # 应用入口
 │   ├── models/                   # 数据模型
