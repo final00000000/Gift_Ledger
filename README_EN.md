@@ -2,10 +2,10 @@
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)
+![Version](https://img.shields.io/badge/version-1.0.1-blue.svg)
 ![Flutter](https://img.shields.io/badge/Flutter-3.2.0-02569B?logo=flutter)
 ![License](https://img.shields.io/badge/License-MIT-green.svg)
-![Platform](https://img.shields.io/badge/platform-Android%20%7C%20iOS%20%7C%20Web-lightgrey)
+![Platform](https://img.shields.io/badge/platform-Android%20%7C%20Windows%20%7C%20Web%20%7C%20iOS-lightgrey)
 
 A simple and elegant gift money tracking app to help you manage social gift exchanges
 
@@ -80,10 +80,22 @@ English | [简体中文](./README.md)
 - Android SDK: API 21 (Android 5.0) or higher
 - Java 17 or higher
 
-#### iOS
+#### iOS (Self-Build Required)
 - Xcode 14.0 or higher
 - CocoaPods 1.11.0 or higher
 - macOS 12.0 or higher
+- Apple ID (free account works for device testing)
+
+> [!NOTE]
+> **iOS Users**: Pre-built IPA files are not available due to lack of Apple Developer account. Please refer to the [iOS Build Instructions](#ios-build-instructions) below.
+
+#### Windows
+- Windows 10 or higher
+- Visual Studio 2019 or higher (with C++ desktop development tools)
+
+#### Web
+- Modern web browser (Chrome, Firefox, Safari, Edge)
+- Static web hosting service (optional for deployment)
 
 ### Installation
 
@@ -110,10 +122,70 @@ English | [简体中文](./README.md)
    flutter build apk --release
    ```
    
-   **iOS**
+   **iOS** (requires macOS and Xcode)
    ```bash
    flutter build ios --release
+   # Open in Xcode for signing and installation
+   open ios/Runner.xcworkspace
    ```
+   
+   **Windows**
+   ```bash
+   flutter build windows --release
+   # Executable: build\windows\x64\runner\Release\gift_ledger.exe
+   ```
+   
+   **Web**
+   ```bash
+   flutter build web --release
+   # Output: build\web
+   # Can be deployed to any static web server
+   ```
+
+### iOS Build Instructions
+
+Since we don't have an Apple Developer account, iOS users need to build the app themselves. Here's how:
+
+#### Prerequisites
+- macOS 12.0 or later
+- Xcode 14.0 or later
+- CocoaPods 1.11.0 or later
+- Apple ID (free account works for device testing)
+
+#### Build Steps
+
+1. **Install CocoaPods dependencies**
+   ```bash
+   cd ios
+   pod install
+   cd ..
+   ```
+
+2. **Open project in Xcode**
+   ```bash
+   open ios/Runner.xcworkspace
+   ```
+
+3. **Configure signing**
+   - Select "Runner" project in Xcode
+   - Go to "Signing & Capabilities" tab
+   - Set "Team" to your Apple ID
+   - Xcode will handle the rest automatically
+
+4. **Connect device and run**
+   - Connect your iPhone/iPad via USB
+   - Select your device in Xcode's top bar
+   - Click Run button (▶️) or press `Cmd + R`
+
+5. **Trust developer certificate**
+   - First launch requires trusting the developer certificate on device
+   - Go to: Settings → General → VPN & Device Management → Trust your Apple ID
+
+> [!IMPORTANT]
+> **Free Apple ID Limitations**  
+> - App signing valid for 7 days, requires rebuild after expiration
+> - Maximum 3 apps can be signed per Apple ID simultaneously
+> - For long-term use, consider Apple Developer Program ($99/year)
 
 ---
 
