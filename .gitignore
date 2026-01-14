@@ -53,3 +53,10 @@ nul
 
 # Brain/artifacts directory
 .gemini/
+
+# Build logs and dev tools
+build_log.txt
+devtools_options.yaml
+
+# Release builds (APKs, etc.)
+releases/

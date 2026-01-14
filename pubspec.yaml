@@ -12,6 +12,7 @@ dependencies:
   cupertino_icons: ^1.0.8
   sqflite: ^2.3.0
   sqflite_common_ffi: ^2.3.0  # 桌面端数据库支持
+  sqlite3_flutter_libs: ^0.5.0 # 包含 sqlite3.dll
   path_provider: ^2.1.1
   intl: ^0.20.2
   flutter_localizations:
@@ -21,6 +22,7 @@ dependencies:
   excel: ^4.0.3            # Excel读写
   share_plus: ^8.0.0       # 分享文件
   permission_handler: ^11.0.0  # 权限管理
+  lunar: ^1.7.8
 
 dev_dependencies:
   flutter_test:

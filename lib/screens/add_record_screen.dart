@@ -7,6 +7,7 @@ import '../services/storage_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/custom_toast.dart';
 import '../widgets/custom_numpad.dart';
+import '../widgets/lunar_calendar_picker.dart';
 
 
 class AddRecordScreen extends StatefulWidget {
@@ -241,32 +242,13 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
   }
 
   Future<void> _selectDate(BuildContext context) async {
-    final DateTime? picked = await showDatePicker(
+    final DateTime? picked = await showDialog<DateTime>(
       context: context,
-      initialDate: _selectedDate,
-      firstDate: DateTime(2000),
-      lastDate: DateTime(2101),
-      locale: const Locale('zh', 'CN'),
-      builder: (context, child) {
-        return Theme(
-          data: ThemeData.light().copyWith(
-            colorScheme: ColorScheme.light(
-              primary: AppTheme.primaryColor,
-              onPrimary: Colors.white,
-              surface: Colors.white,
-              onSurface: AppTheme.textPrimary,
-            ),
-            dialogBackgroundColor: Colors.white,
-            textButtonTheme: TextButtonThemeData(
-              style: TextButton.styleFrom(
-                foregroundColor: AppTheme.primaryColor,
-                textStyle: const TextStyle(fontWeight: FontWeight.w600),
-              ),
-            ),
-          ),
-          child: child!,
-        );
-      },
+      builder: (context) => LunarCalendarPicker(
+        initialDate: _selectedDate,
+        firstDate: DateTime(2000),
+        lastDate: DateTime(2101),
+      ),
     );
     if (picked != null && picked != _selectedDate) {
       setState(() {
@@ -500,9 +482,12 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
                     children: [
                       GestureDetector(
                         onTap: () {
-                          // 点击金额卡片，收起系统键盘，显示数字键盘
+                          // 点击金额卡片内容区域（非快捷按钮），先清空金额再显示数字键盘
                           FocusScope.of(context).unfocus();
-                          setState(() => _showNumpad = true);
+                          setState(() {
+                            _amount = '0';
+                            _showNumpad = true;
+                          });
                         },
                         child: _buildAmountCard(accentColor),
                       ),
@@ -577,8 +562,10 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
   }
 
   Widget _buildAmountCard(Color accentColor) {
+    final quickAmounts = [100, 200, 500, 1000, 2000, 5000, 10000];
+
     return Container(
-      padding: const EdgeInsets.all(24),
+      width: double.infinity,
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(32),
@@ -592,6 +579,7 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
       ),
       child: Column(
         children: [
+          const SizedBox(height: 24),
           Text(
             '礼金金额',
             style: TextStyle(
@@ -628,6 +616,57 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
               ],
             ),
           ),
+          const SizedBox(height: 16),
+          // 分割线
+          Divider(color: Colors.grey.withOpacity(0.1), height: 1),
+          const SizedBox(height: 16),
+          // 内部快捷选择器
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Row(
+              children: quickAmounts.map((amount) {
+                final amountStr = amount.toString();
+                final isSelected = _amount == amountStr;
+                return GestureDetector(
+                  onTap: () {
+                     // 阻止冒泡到父GestureDetector (如果有的话，但这里我们已经在内部了)
+                    setState(() {
+                      _amount = amountStr;
+                    });
+                  },
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    margin: const EdgeInsets.only(right: 12),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: isSelected ? accentColor : accentColor.withOpacity(0.05),
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: isSelected
+                          ? [
+                              BoxShadow(
+                                color: accentColor.withOpacity(0.4),
+                                blurRadius: 8,
+                                offset: const Offset(0, 4),
+                              ),
+                            ]
+                          : [],
+                    ),
+                    child: Text(
+                      '¥$amount',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: isSelected ? Colors.white : accentColor.withOpacity(0.8),
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+          const SizedBox(height: 20),
         ],
       ),
     );
@@ -863,7 +902,8 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
   }) {
     return GestureDetector(
       onTap: () {
-        FocusScope.of(context).unfocus(); // 收起键盘
+        // 使用 FocusManager 直接清除主焦点，比 FocusScope 更可靠
+        FocusManager.instance.primaryFocus?.unfocus();
         onTap();
       },
       child: Container(
@@ -900,8 +940,11 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
     required List<String> items,
     required String current,
     required Function(String) onSelect,
-  }) {
-    showModalBottomSheet(
+  }) async {
+    // 显示前清除焦点 - 使用 FocusManager 直接操作
+    FocusManager.instance.primaryFocus?.unfocus();
+    
+    await showModalBottomSheet(
       context: context,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(32))),
@@ -951,6 +994,9 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
         );
       },
     );
+    
+    // 弹窗关闭后，再次确保取消焦点，防止键盘弹出
+    FocusManager.instance.primaryFocus?.unfocus();
   }
 
   Widget _buildCustomNumPad() {

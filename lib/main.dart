@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/services.dart';
-import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+// 移除不兼容的 imports
+// import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+// import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'theme/app_theme.dart';
 import 'screens/dashboard_screen.dart';
@@ -12,14 +14,14 @@ import 'screens/settings_screen.dart';
 // 条件导入
 import 'platform_check_stub.dart' if (dart.library.io) 'platform_check.dart';
 
+// 条件导入 - 仅桌面端需要初始化
+import 'services/db_init_native.dart' if (dart.library.js_interop) 'services/db_init_stub.dart' as db_init;
+
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 初始化桌面端数据库
-  if (!kIsWeb && isDesktop()) {
-    sqfliteFfiInit();
-    databaseFactory = databaseFactoryFfi;
-  }
+  // 初始化数据库 (仅桌面端)
+  db_init.initializeDatabase();
 
   // 设置系统UI样式
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
