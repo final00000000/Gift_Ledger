@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![版本](https://img.shields.io/badge/版本-1.0.1-blue.svg)
+![版本](https://img.shields.io/badge/版本-1.2.0-blue.svg)
 ![Flutter](https://img.shields.io/badge/Flutter-3.2.0-02569B?logo=flutter)
 ![License](https://img.shields.io/badge/License-MIT-green.svg)
 ![平台](https://img.shields.io/badge/平台-Android%20%7C%20Windows%20%7C%20Web%20%7C%20iOS-lightgrey)
@@ -87,6 +87,36 @@
 | ![设置](screenshots/settings.jpg) |
 
 </details>
+
+---
+
+## 📋 更新日志
+
+### v1.2.0 (2026-01-15) 🆕
+- 📚 **活动簿功能**：支持按活动（婚礼、满月酒等）管理礼金
+- 📝 **批量录入**：在活动簿中快速批量添加多条记录
+- 🔔 **每月还礼提醒**：自动推送待还人情 Top3
+- ⚡ **性能优化**：首页数据并行加载，速度提升 3-5 倍
+- 🐛 **Bug 修复**：修复多个 UI 和布局问题
+
+<details>
+<summary>查看历史版本</summary>
+
+### v1.0.1 (2026-01-14)
+- 📝 统一版本号
+- 📚 完善 iOS 自行构建说明
+- 📥 更新下载表格和部署建议
+
+### v1.0.0 (2026-01-13)
+- 🎉 首次发布
+- 📊 收支概览卡片
+- 📝 快速记账功能
+- 👥 联系人管理
+- 📤 数据导出/导入
+
+</details>
+
+👉 [查看完整更新日志](./CHANGELOG.md)
 
 ---
 

@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/version-1.0.1-blue.svg)
+![Version](https://img.shields.io/badge/version-1.2.0-blue.svg)
 ![Flutter](https://img.shields.io/badge/Flutter-3.2.0-02569B?logo=flutter)
 ![License](https://img.shields.io/badge/License-MIT-green.svg)
 ![Platform](https://img.shields.io/badge/platform-Android%20%7C%20Windows%20%7C%20Web%20%7C%20iOS-lightgrey)
@@ -66,6 +66,36 @@ English | [简体中文](./README.md)
 | ![Settings](screenshots/settings.jpg) |
 
 </details>
+
+---
+
+## 📋 Changelog
+
+### v1.2.0 (2026-01-15) 🆕
+- 📚 **Event Books**: Manage gifts by events (weddings, baby showers, etc.)
+- 📝 **Batch Entry**: Quickly add multiple records in event books
+- 🔔 **Monthly Reminders**: Auto-push Top 3 pending gift returns
+- ⚡ **Performance**: Parallel data loading, 3-5x faster
+- 🐛 **Bug Fixes**: Multiple UI and layout issues
+
+<details>
+<summary>View older versions</summary>
+
+### v1.0.1 (2026-01-14)
+- 📝 Unified version numbers
+- 📚 Improved iOS build instructions
+- 📥 Updated download table and deployment tips
+
+### v1.0.0 (2026-01-13)
+- 🎉 Initial release
+- 📊 Balance overview cards
+- 📝 Quick bookkeeping
+- 👥 Contact management
+- 📤 Data export/import
+
+</details>
+
+👉 [View Full Changelog](./CHANGELOG.md)
 
 ---
 
