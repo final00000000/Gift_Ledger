@@ -44,6 +44,7 @@ app.*.map.json
 
 # Development and sensitive files
 .claude/
+.codex/
 .spec-workflow/
 GITHUB_GUIDE.md
 CONTRIBUTING.md
