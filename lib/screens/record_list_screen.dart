@@ -4,6 +4,7 @@ import '../models/gift.dart';
 import '../models/guest.dart';
 import '../services/storage_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/lunar_utils.dart';
 import 'add_record_screen.dart';
 
 class RecordListScreen extends StatefulWidget {
@@ -341,6 +342,9 @@ class _RecordListScreenState extends State<RecordListScreen>
     final guestName = guest?.name ?? '未知联系人';
     // 使用 gift.isReceived 决定颜色，支持"全部记录"视图
     final itemColor = gift.isReceived ? AppTheme.primaryColor : AppTheme.accentColor;
+    final solarDate = DateFormat('yyyy-MM-dd').format(gift.date);
+    final lunarDate = LunarUtils.getLunarDateString(gift.date);
+    final dateText = lunarDate.isEmpty ? solarDate : '$solarDate ($lunarDate)';
     
     return Container(
       margin: const EdgeInsets.only(bottom: AppTheme.spacingM),
@@ -392,11 +396,15 @@ class _RecordListScreenState extends State<RecordListScreen>
                       const SizedBox(height: 4),
                       Row(
                         children: [
-                          Text(
-                            gift.eventType,
-                            style: const TextStyle(
-                              fontSize: 13,
-                              color: AppTheme.textSecondary,
+                          Flexible(
+                            child: Text(
+                              gift.eventType,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 13,
+                                color: AppTheme.textSecondary,
+                              ),
                             ),
                           ),
                           const SizedBox(width: 8),
@@ -407,11 +415,15 @@ class _RecordListScreenState extends State<RecordListScreen>
                             ),
                           ),
                           const SizedBox(width: 8),
-                          Text(
-                            DateFormat('yyyy-MM-dd').format(gift.date),
-                            style: const TextStyle(
-                              fontSize: 13,
-                              color: AppTheme.textSecondary,
+                          Expanded(
+                            child: Text(
+                              dateText,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 13,
+                                color: AppTheme.textSecondary,
+                              ),
                             ),
                           ),
                         ],
@@ -524,6 +536,7 @@ class _RecordListScreenState extends State<RecordListScreen>
             _buildDetailRow('事由', gift.eventType),
             _buildDetailRow('金额', '¥${gift.amount.toStringAsFixed(0)}'),
             _buildDetailRow('日期', DateFormat('yyyy年MM月dd日').format(gift.date)),
+            _buildDetailRow('农历', LunarUtils.getFullLunarString(gift.date)),
             if (gift.note != null && gift.note!.isNotEmpty)
               _buildDetailRow('备注', gift.note!),
             const SizedBox(height: 24),

@@ -13,11 +13,26 @@ import '../widgets/lunar_calendar_picker.dart';
 class AddRecordScreen extends StatefulWidget {
   final Gift? editingGift;
   final Guest? editingGuest;
+  // 预填参数（从清单页跳转时用）
+  final int? prefillGuestId;
+  final String? prefillGuestName;
+  final String? prefillEventType;
+  final double? prefillAmount;
+  final bool? prefillIsReceived;
+  final int? relatedGiftId;  // 关联的原记录ID
+  final int? initialEventBookId; // 初始活动簿ID
 
   const AddRecordScreen({
     super.key,
     this.editingGift,
     this.editingGuest,
+    this.prefillGuestId,
+    this.prefillGuestName,
+    this.prefillEventType,
+    this.prefillAmount,
+    this.prefillIsReceived,
+    this.relatedGiftId,
+    this.initialEventBookId,
   });
 
   @override
@@ -43,6 +58,7 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
   OverlayEntry? _overlayEntry;
   bool _showNumpad = false;  // 控制数字键盘显示状态
   final FocusNode _nameFocusNode = FocusNode(); // 添加 FocusNode
+  int? _eventBookId;
 
   @override
   void initState() {
@@ -55,7 +71,29 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
     // 如果是编辑模式，初始化数据
     if (widget.editingGift != null) {
       _initializeEditMode();
+    } else if (widget.prefillGuestName != null || widget.prefillAmount != null) {
+      // 预填模式（从清单页跳转）
+      _initializePrefillMode();
+    } else {
+      _eventBookId = widget.initialEventBookId;
     }
+  }
+
+  void _initializePrefillMode() {
+    setState(() {
+      if (widget.prefillGuestName != null) {
+        _nameController.text = widget.prefillGuestName!;
+      }
+      if (widget.prefillEventType != null) {
+        _eventType = widget.prefillEventType!;
+      }
+      if (widget.prefillAmount != null) {
+        _amount = widget.prefillAmount!.toStringAsFixed(0);
+      }
+      if (widget.prefillIsReceived != null) {
+        _isReceived = widget.prefillIsReceived!;
+      }
+    });
   }
 
   void _initializeEditMode() {
@@ -66,6 +104,7 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
       _amount = gift.amount.toStringAsFixed(0);
       _isReceived = gift.isReceived;
       _eventType = gift.eventType;
+      _eventBookId = gift.eventBookId;
       _selectedDate = gift.date;
       if (gift.note != null) {
         _noteController.text = gift.note!;
@@ -96,6 +135,11 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
 
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
+
+    // 编辑/预填模式下，避免默认设置异步覆盖用户意图
+    if (widget.editingGift != null || widget.prefillIsReceived != null) return;
+    if (!mounted) return;
+
     setState(() {
       _isReceived = prefs.getBool('default_is_received') ?? true;
     });
@@ -383,6 +427,7 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
           amount: amount,
           isReceived: _isReceived,
           eventType: _eventType,
+          eventBookId: _eventBookId,
           date: _selectedDate,
           note: _noteController.text.trim().isEmpty ? null : _noteController.text.trim(),
         );
@@ -417,11 +462,27 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
           amount: amount,
           isReceived: _isReceived,
           eventType: _eventType,
+          eventBookId: _eventBookId,
           date: _selectedDate,
           note: _noteController.text.trim().isEmpty ? null : _noteController.text.trim(),
+          relatedRecordId: widget.relatedGiftId,
+          isReturned: widget.relatedGiftId != null, // 如果有关联ID，则标记为已还
         );
 
         await _db.saveGiftWithGuest(gift, guest);
+        
+        // 如果有预设关联记录，也标记原记录为已还
+        if (widget.relatedGiftId != null) {
+          await _db.updateReturnStatus(widget.relatedGiftId!, isReturned: true);
+        }
+        
+        // 如果没有预设关联，且是送礼记录，检查是否有匹配的未还收礼记录
+        if (widget.relatedGiftId == null && !_isReceived) {
+          await _checkAndSuggestLink(name, amount);
+        } else if (widget.relatedGiftId == null && _isReceived) {
+          // 如果是收礼记录，检查是否有匹配的待收送礼记录
+          await _checkAndSuggestLinkForReceived(name, amount);
+        }
         
         if (mounted) {
           CustomToast.show(context, '保存成功');
@@ -436,6 +497,208 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
       if (mounted) {
         setState(() => _isSaving = false);
       }
+    }
+  }
+
+  /// 检查是否有匹配的未还收礼记录（用于送礼记录）
+  Future<void> _checkAndSuggestLink(String guestName, double amount) async {
+    try {
+      // 获取未还收礼记录
+      final unreturnedGifts = await _db.getUnreturnedGifts();
+      final guests = await _db.getAllGuests();
+      
+      // 找到匹配该姓名的联系人
+      final matchedGuest = guests.where((g) => g.name == guestName).toList();
+      if (matchedGuest.isEmpty) return;
+      
+      final guestId = matchedGuest.first.id;
+      
+      // 找到该联系人的未还记录，且事件类型相同
+      final matchedGifts = unreturnedGifts.where((g) => 
+        g.guestId == guestId && 
+        g.eventType == _eventType &&
+        g.relatedRecordId == null
+      ).toList();
+      
+      if (matchedGifts.isEmpty || !mounted) return;
+      
+      final matchedGift = matchedGifts.first;
+      
+      // 弹出关联建议对话框
+      final shouldLink = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Row(
+            children: [
+              Icon(Icons.link_rounded, color: AppTheme.primaryColor),
+              SizedBox(width: 12),
+              Text('关联提示'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('检测到 $guestName 有一笔未还记录：'),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryColor.withOpacity(0.05),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.card_giftcard_rounded, color: AppTheme.primaryColor, size: 32),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '${matchedGift.eventType} ¥${matchedGift.amount.toStringAsFixed(0)}',
+                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                          Text(
+                            DateFormat('yyyy-MM-dd').format(matchedGift.date),
+                            style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text('是否将这笔送礼关联到该记录，并标记为已还？'),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('不关联'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryColor,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              child: const Text('关联'),
+            ),
+          ],
+        ),
+      );
+      
+      if (shouldLink == true && matchedGift.id != null) {
+        // 标记原收礼记录为已还
+        await _db.updateReturnStatus(matchedGift.id!, isReturned: true);
+      }
+    } catch (e) {
+      // 忽略关联检测的错误，不影响主流程
+    }
+  }
+
+  /// 检查是否有匹配的待收送礼记录（用于收礼记录）
+  Future<void> _checkAndSuggestLinkForReceived(String guestName, double amount) async {
+    try {
+      // 获取待收送礼记录
+      final pendingReceipts = await _db.getPendingReceipts();
+      final guests = await _db.getAllGuests();
+      
+      // 找到匹配该姓名的联系人
+      final matchedGuest = guests.where((g) => g.name == guestName).toList();
+      if (matchedGuest.isEmpty) return;
+      
+      final guestId = matchedGuest.first.id;
+      
+      // 找到该联系人的待收记录，且事件类型相同
+      final matchedGifts = pendingReceipts.where((g) => 
+        g.guestId == guestId && 
+        g.eventType == _eventType &&
+        g.relatedRecordId == null
+      ).toList();
+      
+      if (matchedGifts.isEmpty || !mounted) return;
+      
+      final matchedGift = matchedGifts.first;
+      
+      // 弹出关联建议对话框
+      final shouldLink = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Row(
+            children: [
+              Icon(Icons.link_rounded, color: AppTheme.accentColor),
+              SizedBox(width: 12),
+              Text('关联提示'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('检测到 $guestName 有一笔待收记录：'),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppTheme.accentColor.withOpacity(0.05),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.redeem_rounded, color: AppTheme.accentColor, size: 32),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '${matchedGift.eventType} ¥${matchedGift.amount.toStringAsFixed(0)}',
+                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                          Text(
+                            DateFormat('yyyy-MM-dd').format(matchedGift.date),
+                            style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text('是否将这笔收礼关联到该记录，并标记为已收？'),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('不关联'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.accentColor,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              child: const Text('关联'),
+            ),
+          ],
+        ),
+      );
+      
+      if (shouldLink == true && matchedGift.id != null) {
+        // 标记原送礼记录为已收
+        await _db.updateReturnStatus(matchedGift.id!, isReturned: true);
+      }
+    } catch (e) {
+      // 忽略关联检测的错误，不影响主流程
     }
   }
 

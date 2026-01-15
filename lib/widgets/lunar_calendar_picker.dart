@@ -141,11 +141,17 @@ class _LunarCalendarPickerState extends State<LunarCalendarPicker> {
         title: const Text('选择月份', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.w900)),
         contentPadding: const EdgeInsets.all(16),
         content: SizedBox(
-          width: 300,
-          child: Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: List.generate(12, (index) {
+          width: 280,
+          child: GridView.builder(
+            shrinkWrap: true,
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 3,
+              childAspectRatio: 1.8,
+              crossAxisSpacing: 10,
+              mainAxisSpacing: 10,
+            ),
+            itemCount: 12,
+            itemBuilder: (context, index) {
               final month = index + 1;
               final isSelected = month == currentMonth;
               return GestureDetector(
@@ -156,24 +162,23 @@ class _LunarCalendarPickerState extends State<LunarCalendarPicker> {
                   Navigator.pop(context);
                 },
                 child: Container(
-                  width: 80,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
                   decoration: BoxDecoration(
                     color: isSelected ? AppTheme.primaryColor : AppTheme.backgroundColor,
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(10),
                   ),
                   child: Center(
                     child: Text(
                       '$month月',
                       style: TextStyle(
                         fontWeight: FontWeight.w700,
+                        fontSize: 15,
                         color: isSelected ? Colors.white : AppTheme.textPrimary,
                       ),
                     ),
                   ),
                 ),
               );
-            }),
+            },
           ),
         ),
       ),

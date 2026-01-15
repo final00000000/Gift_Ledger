@@ -3,6 +3,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../theme/app_theme.dart';
 import '../widgets/custom_toast.dart';
 import '../widgets/export_dialogs.dart';
+import '../services/template_service.dart';
+import '../services/notification_service.dart';
+import '../services/storage_service.dart';
+import 'template_settings_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -13,6 +17,12 @@ class SettingsScreen extends StatefulWidget {
 
 class SettingsScreenState extends State<SettingsScreen> {
   bool _defaultIsReceived = true;
+  bool _useFuzzyAmount = false;
+  bool _notificationsEnabled = false;
+  bool _statsIncludeEventBooks = true;
+  final TemplateService _templateService = TemplateService();
+  final NotificationService _notificationService = NotificationService();
+  final StorageService _db = StorageService();
 
   @override
   void initState() {
@@ -21,9 +31,20 @@ class SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _loadSettings() async {
-    final prefs = await SharedPreferences.getInstance();
+    // 并行加载所有设置
+    final results = await Future.wait([
+      SharedPreferences.getInstance(),
+      _templateService.getUseFuzzyAmount(),
+      _notificationService.isEnabled(),
+      _db.getStatsIncludeEventBooks(),
+    ]);
+    
+    final prefs = results[0] as SharedPreferences;
     setState(() {
       _defaultIsReceived = prefs.getBool('default_is_received') ?? true;
+      _useFuzzyAmount = results[1] as bool;
+      _notificationsEnabled = results[2] as bool;
+      _statsIncludeEventBooks = results[3] as bool;
     });
   }
 
@@ -50,7 +71,7 @@ class SettingsScreenState extends State<SettingsScreen> {
       body: CustomScrollView(
         slivers: [
           SliverAppBar(
-            expandedHeight: 120.0,
+            expandedHeight: 80.0,
             floating: false,
             pinned: true,
             backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -61,126 +82,137 @@ class SettingsScreenState extends State<SettingsScreen> {
                 style: TextStyle(
                   color: AppTheme.textPrimary,
                   fontWeight: FontWeight.w900,
-                  fontSize: 24,
+                  fontSize: 22,
                 ),
               ),
               centerTitle: false,
-              titlePadding: const EdgeInsets.only(left: 20, bottom: 16),
+              titlePadding: const EdgeInsets.only(left: 20, bottom: 14),
             ),
           ),
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.all(AppTheme.spacingL),
+              padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildSectionHeader('记账偏好'),
-                  const SizedBox(height: AppTheme.spacingM),
-                  // 默认记账类型 - 独立卡片布局
-                  Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).cardColor,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: Colors.black.withOpacity(0.04)),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.05),
-                          blurRadius: 15,
-                          offset: const Offset(0, 5),
-                        ),
-                      ],
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: AppTheme.primaryColor.withOpacity(0.05),
-                                borderRadius: BorderRadius.circular(15),
-                              ),
-                              child: const Icon(Icons.auto_awesome_rounded, color: AppTheme.primaryColor, size: 24),
-                            ),
-                            const SizedBox(width: 16),
-                            const Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    '默认记账类型',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w800,
-                                      fontSize: 16,
-                                      color: AppTheme.textPrimary,
-                                    ),
-                                  ),
-                                  SizedBox(height: 4),
-                                  Text(
-                                    '开启记账页时优先选中的分类',
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      color: AppTheme.textSecondary,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 20),
-                        Container(
-                          padding: const EdgeInsets.all(6),
-                          decoration: BoxDecoration(
-                            color: AppTheme.backgroundColor,
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                          child: Row(
-                            children: [
-                              Expanded(child: _buildTypeOption('收礼', true)),
-                              const SizedBox(width: 8),
-                              Expanded(child: _buildTypeOption('送礼', false)),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: AppTheme.spacingXL),
-                  _buildSectionHeader('数据管理'),
-                  const SizedBox(height: AppTheme.spacingM),
-                  _buildSettingCard(
-                    title: '导出数据',
-                    subtitle: '备份数据到本地或分享',
-                    icon: Icons.file_upload_outlined,
-                    trailing: const Icon(Icons.chevron_right_rounded, color: AppTheme.textSecondary),
-                    onTap: () => ExportDialogs.showExportOptions(context),
+                  // 记账与统计
+                  _buildSectionCard(
+                    title: '记账与统计',
+                    children: [
+                      _buildSwitchTile(
+                        icon: Icons.auto_awesome_rounded,
+                        iconColor: AppTheme.primaryColor,
+                        title: '默认收礼模式',
+                        subtitle: '新建记录时默认选中收礼',
+                        value: _defaultIsReceived,
+                        onChanged: (v) => _saveSetting(v),
+                      ),
+                      const Divider(height: 1, indent: 52),
+                      _buildSwitchTile(
+                        icon: Icons.pie_chart_rounded,
+                        iconColor: Colors.purple,
+                        title: '统计包含活动簿',
+                        subtitle: '首页统计是否包含活动簿内的礼金',
+                        value: _statsIncludeEventBooks,
+                        onChanged: (v) async {
+                          await _db.setStatsIncludeEventBooks(v);
+                          setState(() => _statsIncludeEventBooks = v);
+                          if (mounted) CustomToast.show(context, '设置已保存');
+                        },
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 12),
-                  _buildSettingCard(
-                    title: '导入数据',
-                    subtitle: '恢复备份或从 Excel 导入',
-                    icon: Icons.file_download_outlined,
-                    trailing: const Icon(Icons.chevron_right_rounded, color: AppTheme.textSecondary),
-                    onTap: () => ExportDialogs.showImportOptions(context, () {
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('数据导入成功，请下拉刷新首页查看')),
-                        );
-                      }
-                    }),
+                  // 还礼提醒
+                  _buildSectionCard(
+                    title: '还礼提醒',
+                    children: [
+                      _buildSwitchTile(
+                        icon: Icons.blur_on_rounded,
+                        iconColor: AppTheme.primaryColor,
+                        title: '模糊金额',
+                        subtitle: '提醒话术中将金额显示为"千把块"等',
+                        value: _useFuzzyAmount,
+                        onChanged: (v) async {
+                          await _templateService.setUseFuzzyAmount(v);
+                          setState(() => _useFuzzyAmount = v);
+                          if (mounted) CustomToast.show(context, '设置已保存');
+                        },
+                      ),
+                      const Divider(height: 1, indent: 56),
+                      _buildNavigationTile(
+                        icon: Icons.chat_bubble_outline_rounded,
+                        iconColor: AppTheme.primaryColor,
+                        title: '话术模板',
+                        subtitle: '自定义提醒消息模板',
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const TemplateSettingsScreen()),
+                        ),
+                      ),
+                      const Divider(height: 1, indent: 56),
+                      _buildSwitchTile(
+                        icon: Icons.notifications_active_rounded,
+                        iconColor: AppTheme.primaryColor,
+                        title: '每月提醒',
+                        subtitle: '每月初推送待还人情Top3',
+                        value: _notificationsEnabled,
+                        onChanged: (v) async {
+                          await _notificationService.setEnabled(v);
+                          setState(() => _notificationsEnabled = v);
+                          if (mounted) CustomToast.show(context, v ? '已开启每月提醒' : '已关闭每月提醒');
+                        },
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: AppTheme.spacingXL),
-                  _buildSectionHeader('关于应用'),
-                  const SizedBox(height: AppTheme.spacingM),
-                  _buildSettingCard(
-                    title: '应用名称',
-                    subtitle: '随礼记',
-                    icon: Icons.info_outline_rounded,
-                    trailing: const Text('v1.0.0', style: TextStyle(color: AppTheme.textSecondary)),
+                  const SizedBox(height: 16),
+                  // 数据管理
+                  _buildSectionCard(
+                    title: '数据管理',
+                    children: [
+                      _buildNavigationTile(
+                        icon: Icons.file_upload_outlined,
+                        iconColor: AppTheme.primaryColor,
+                        title: '导出数据',
+                        subtitle: '备份数据到本地或分享',
+                        onTap: () => ExportDialogs.showExportOptions(context),
+                      ),
+                      const Divider(height: 1, indent: 56),
+                      _buildNavigationTile(
+                        icon: Icons.file_download_outlined,
+                        iconColor: AppTheme.primaryColor,
+                        title: '导入数据',
+                        subtitle: '恢复备份或从 Excel 导入',
+                        onTap: () => ExportDialogs.showImportOptions(context, () {
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('数据导入成功，请下拉刷新首页查看')),
+                            );
+                          }
+                        }),
+                      ),
+                    ],
                   ),
+                  const SizedBox(height: 16),
+                  // 关于
+                  _buildSectionCard(
+                    title: '关于',
+                    children: [
+                      ListTile(
+                        leading: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: AppTheme.primaryColor.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Icon(Icons.info_outline_rounded, color: AppTheme.primaryColor, size: 20),
+                        ),
+                        title: const Text('随礼记', style: TextStyle(fontWeight: FontWeight.w600)),
+                        trailing: const Text('v1.2.0', style: TextStyle(color: AppTheme.textSecondary)),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 32),
                 ],
               ),
             ),
@@ -190,120 +222,85 @@ class SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Widget _buildTypeOption(String label, bool isReceived) {
-    final isSelected = _defaultIsReceived == isReceived;
-    return GestureDetector(
-      onTap: () => _saveSetting(isReceived),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: isSelected ? Theme.of(context).cardColor : Colors.transparent,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: isSelected 
-                ? AppTheme.primaryColor.withOpacity(0.2) 
-                : Colors.black.withOpacity(0.08),
-            width: isSelected ? 1.5 : 1,
+  Widget _buildSectionCard({required String title, required List<Widget> children}) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.black.withOpacity(0.04)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+            child: Text(
+              title,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: AppTheme.textSecondary.withOpacity(0.7),
+              ),
+            ),
           ),
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: AppTheme.primaryColor.withOpacity(0.1),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  )
-                ]
-              : null,
-        ),
-        child: Text(
-          label,
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-            color: isSelected ? AppTheme.primaryColor : AppTheme.textPrimary,
-          ),
-        ),
+          ...children,
+          const SizedBox(height: 4),
+        ],
       ),
     );
   }
 
-  Widget _buildSectionHeader(String title) {
-    return Text(
-      title,
-      style: TextStyle(
-        fontSize: 14,
-        fontWeight: FontWeight.w800,
-        color: AppTheme.textSecondary.withOpacity(0.5),
-        letterSpacing: 1.2,
-      ),
-    );
-  }
-
-  Widget _buildSettingCard({
+  Widget _buildSwitchTile({
+    required IconData icon,
+    required Color iconColor,
     required String title,
     required String subtitle,
-    required IconData icon,
-    required Widget trailing,
-    VoidCallback? onTap,
+    required bool value,
+    required ValueChanged<bool> onChanged,
   }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+    return ListTile(
+      leading: Container(
+        padding: const EdgeInsets.all(6),
         decoration: BoxDecoration(
-          color: Theme.of(context).cardColor,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: Colors.black.withOpacity(0.04)),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 15,
-              offset: const Offset(0, 5),
-            ),
-          ],
+          color: iconColor.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(8),
         ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppTheme.primaryColor.withOpacity(0.05),
-                borderRadius: BorderRadius.circular(15),
-              ),
-              child: Icon(icon, color: AppTheme.primaryColor, size: 24),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w800,
-                      fontSize: 16,
-                      color: AppTheme.textPrimary,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    subtitle,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      color: AppTheme.textSecondary,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 12),
-            trailing,
-          ],
-        ),
+        child: Icon(icon, color: iconColor, size: 18),
       ),
+      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+      subtitle: Text(subtitle, style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
+      trailing: Switch.adaptive(
+        value: value,
+        onChanged: onChanged,
+        activeColor: AppTheme.primaryColor,
+      ),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+      visualDensity: VisualDensity.compact,
+    );
+  }
+
+  Widget _buildNavigationTile({
+    required IconData icon,
+    required Color iconColor,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    return ListTile(
+      leading: Container(
+        padding: const EdgeInsets.all(6),
+        decoration: BoxDecoration(
+          color: iconColor.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Icon(icon, color: iconColor, size: 18),
+      ),
+      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+      subtitle: Text(subtitle, style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
+      trailing: const Icon(Icons.chevron_right_rounded, color: AppTheme.textSecondary, size: 20),
+      onTap: onTap,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+      visualDensity: VisualDensity.compact,
     );
   }
 }

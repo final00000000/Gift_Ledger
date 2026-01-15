@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../models/event_book.dart';
 import '../models/gift.dart';
 import '../models/guest.dart';
 
@@ -21,8 +22,10 @@ class NativeDatabaseService {
   // 存储键
   static const String _guestsKey = 'guests';
   static const String _giftsKey = 'gifts';
+  static const String _eventBooksKey = 'eventBooks';
   static const String _guestIdCounterKey = 'guestIdCounter';
   static const String _giftIdCounterKey = 'giftIdCounter';
+  static const String _eventBookIdCounterKey = 'eventBookIdCounter';
 
   // 加载 Guests
   Future<List<Guest>> _loadGuests() async {
@@ -39,6 +42,21 @@ class NativeDatabaseService {
     final prefs = await _storage;
     final String json = jsonEncode(guests.map((g) => g.toMap()).toList());
     await prefs.setString(_guestsKey, json);
+  }
+
+  Future<List<EventBook>> _loadEventBooks() async {
+    final prefs = await _storage;
+    final String? json = prefs.getString(_eventBooksKey);
+    if (json == null) return [];
+
+    final List<dynamic> list = jsonDecode(json);
+    return list.map((item) => EventBook.fromMap(item as Map<String, dynamic>)).toList();
+  }
+
+  Future<void> _saveEventBooks(List<EventBook> eventBooks) async {
+    final prefs = await _storage;
+    final String json = jsonEncode(eventBooks.map((b) => b.toMap()).toList());
+    await prefs.setString(_eventBooksKey, json);
   }
 
   // 加载 Gifts
@@ -70,6 +88,13 @@ class NativeDatabaseService {
     final prefs = await _storage;
     final int current = prefs.getInt(_giftIdCounterKey) ?? 1;
     await prefs.setInt(_giftIdCounterKey, current + 1);
+    return current;
+  }
+
+  Future<int> _getNextEventBookId() async {
+    final prefs = await _storage;
+    final int current = prefs.getInt(_eventBookIdCounterKey) ?? 1;
+    await prefs.setInt(_eventBookIdCounterKey, current + 1);
     return current;
   }
 
@@ -136,6 +161,55 @@ class NativeDatabaseService {
     return 1;
   }
 
+  Future<int> insertEventBook(EventBook eventBook) async {
+    final eventBooks = await _loadEventBooks();
+    final id = await _getNextEventBookId();
+    final newEventBook = eventBook.copyWith(id: id);
+    eventBooks.add(newEventBook);
+    await _saveEventBooks(eventBooks);
+    return id;
+  }
+
+  Future<List<EventBook>> getAllEventBooks() async {
+    final eventBooks = await _loadEventBooks();
+    eventBooks.sort((a, b) {
+      final dateCompare = b.date.compareTo(a.date);
+      if (dateCompare != 0) return dateCompare;
+      return b.createdAt.compareTo(a.createdAt);
+    });
+    return eventBooks;
+  }
+
+  Future<EventBook?> getEventBookById(int id) async {
+    final eventBooks = await _loadEventBooks();
+    try {
+      return eventBooks.firstWhere((b) => b.id == id);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<int> updateEventBook(EventBook eventBook) async {
+    final eventBooks = await _loadEventBooks();
+    final index = eventBooks.indexWhere((b) => b.id == eventBook.id);
+    if (index != -1) {
+      eventBooks[index] = eventBook;
+      await _saveEventBooks(eventBooks);
+      return 1;
+    }
+    return 0;
+  }
+
+  Future<int> deleteEventBook(int id) async {
+    final eventBooks = await _loadEventBooks();
+    final gifts = await _loadGifts();
+    eventBooks.removeWhere((b) => b.id == id);
+    gifts.removeWhere((g) => g.eventBookId == id);
+    await _saveEventBooks(eventBooks);
+    await _saveGifts(gifts);
+    return 1;
+  }
+
   // Gift CRUD
   Future<int> insertGift(Gift gift) async {
     final gifts = await _loadGifts();
@@ -146,12 +220,30 @@ class NativeDatabaseService {
       amount: gift.amount,
       isReceived: gift.isReceived,
       eventType: gift.eventType,
+      eventBookId: gift.eventBookId,
       date: gift.date,
       note: gift.note,
+      relatedRecordId: gift.relatedRecordId,
+      isReturned: gift.isReturned,
+      returnDueDate: gift.returnDueDate,
+      remindedCount: gift.remindedCount,
     );
     gifts.add(newGift);
     await _saveGifts(gifts);
     return id;
+  }
+
+  Future<void> insertGiftsBatch(List<Gift> gifts) async {
+    if (gifts.isEmpty) return;
+    final storedGifts = await _loadGifts();
+    final prefs = await _storage;
+    int currentId = prefs.getInt(_giftIdCounterKey) ?? 1;
+    for (final gift in gifts) {
+      storedGifts.add(gift.copyWith(id: currentId));
+      currentId += 1;
+    }
+    await prefs.setInt(_giftIdCounterKey, currentId);
+    await _saveGifts(storedGifts);
   }
 
   Future<List<Gift>> getAllGifts() async {
@@ -163,6 +255,13 @@ class NativeDatabaseService {
   Future<List<Gift>> getGiftsByGuest(int guestId) async {
     final gifts = await _loadGifts();
     final filtered = gifts.where((g) => g.guestId == guestId).toList();
+    filtered.sort((a, b) => b.date.compareTo(a.date));
+    return filtered;
+  }
+
+  Future<List<Gift>> getGiftsByEventBook(int eventBookId) async {
+    final gifts = await _loadGifts();
+    final filtered = gifts.where((g) => g.eventBookId == eventBookId).toList();
     filtered.sort((a, b) => b.date.compareTo(a.date));
     return filtered;
   }
@@ -191,38 +290,61 @@ class NativeDatabaseService {
     return 1;
   }
 
+  Future<double> getEventBookReceivedTotal(int eventBookId) async {
+    final gifts = await _loadGifts();
+    double total = 0;
+    for (var gift in gifts.where((g) => g.isReceived && g.eventBookId == eventBookId)) {
+      total += gift.amount;
+    }
+    return total;
+  }
+
+  Future<double> getEventBookSentTotal(int eventBookId) async {
+    final gifts = await _loadGifts();
+    double total = 0;
+    for (var gift in gifts.where((g) => !g.isReceived && g.eventBookId == eventBookId)) {
+      total += gift.amount;
+    }
+    return total;
+  }
+
+  Future<int> getEventBookGiftCount(int eventBookId) async {
+    final gifts = await _loadGifts();
+    return gifts.where((g) => g.eventBookId == eventBookId).length;
+  }
+
   // 统计
-  Future<double> getTotalReceived() async {
+  Future<double> getTotalReceived({bool includeEventBooks = true}) async {
     final gifts = await _loadGifts();
     double total = 0;
-    for (var g in gifts.where((g) => g.isReceived)) {
+    for (var g in gifts.where((g) => g.isReceived && (includeEventBooks || g.eventBookId == null))) {
       total += g.amount;
     }
     return total;
   }
 
-  Future<double> getTotalSent() async {
+  Future<double> getTotalSent({bool includeEventBooks = true}) async {
     final gifts = await _loadGifts();
     double total = 0;
-    for (var g in gifts.where((g) => !g.isReceived)) {
+    for (var g in gifts.where((g) => !g.isReceived && (includeEventBooks || g.eventBookId == null))) {
       total += g.amount;
     }
     return total;
   }
 
-  Future<Map<int, double>> getGuestReceivedTotals() async {
+  Future<Map<int, double>> getGuestReceivedTotals({bool includeEventBooks = true}) async {
     final gifts = await _loadGifts();
     final Map<int, double> totals = {};
-    for (var gift in gifts.where((g) => g.isReceived)) {
+    for (var gift in gifts.where((g) => g.isReceived && (includeEventBooks || g.eventBookId == null))) {
       totals[gift.guestId] = (totals[gift.guestId] ?? 0) + gift.amount;
     }
     return totals;
   }
 
-  Future<Map<int, double>> getGuestSentTotals() async {
+  Future<Map<int, double>> getGuestSentTotals({bool includeEventBooks = true}) async {
     final gifts = await _loadGifts();
     final Map<int, double> totals = {};
-    for (var gift in gifts.where((g) => !g.isReceived)) {
+    for (var gift in gifts.where((g) => !g.isReceived && (includeEventBooks || g.eventBookId == null))) {
       totals[gift.guestId] = (totals[gift.guestId] ?? 0) + gift.amount;
     }
     return totals;
@@ -242,6 +364,75 @@ class NativeDatabaseService {
     }
     // 保存礼金
     await insertGift(gift.copyWith(guestId: guestId));
+  }
+
+  // 还礼追踪查询方法
+  
+  /// 获取未还清单：收礼且未还的记录
+  Future<List<Gift>> getUnreturnedGifts({bool includeEventBooks = true}) async {
+    final gifts = await _loadGifts();
+    final filtered = gifts
+        .where((g) => g.isReceived && !g.isReturned && (includeEventBooks || g.eventBookId == null))
+        .toList();
+    filtered.sort((a, b) => b.date.compareTo(a.date));
+    return filtered;
+  }
+
+  /// 获取待收清单：送礼且未收的记录
+  Future<List<Gift>> getPendingReceipts({bool includeEventBooks = true}) async {
+    final gifts = await _loadGifts();
+    final filtered = gifts
+        .where((g) => !g.isReceived && !g.isReturned && (includeEventBooks || g.eventBookId == null))
+        .toList();
+    filtered.sort((a, b) => b.date.compareTo(a.date));
+    return filtered;
+  }
+
+  /// 更新还礼状态
+  Future<int> updateReturnStatus(int giftId, {required bool isReturned, int? relatedRecordId}) async {
+    final gifts = await _loadGifts();
+    final index = gifts.indexWhere((g) => g.id == giftId);
+    if (index != -1) {
+      gifts[index] = gifts[index].copyWith(
+        isReturned: isReturned,
+        relatedRecordId: relatedRecordId,
+      );
+      await _saveGifts(gifts);
+      return 1;
+    }
+    return 0;
+  }
+
+  /// 增加提醒计数
+  Future<int> incrementRemindedCount(int giftId) async {
+    final gifts = await _loadGifts();
+    final index = gifts.indexWhere((g) => g.id == giftId);
+    if (index != -1) {
+      gifts[index] = gifts[index].copyWith(
+        remindedCount: gifts[index].remindedCount + 1,
+      );
+      await _saveGifts(gifts);
+      return 1;
+    }
+    return 0;
+  }
+
+  /// 关联两条记录
+  Future<void> linkGiftRecords(int giftId1, int giftId2) async {
+    final gifts = await _loadGifts();
+    final index1 = gifts.indexWhere((g) => g.id == giftId1);
+    final index2 = gifts.indexWhere((g) => g.id == giftId2);
+    if (index1 != -1 && index2 != -1) {
+      gifts[index1] = gifts[index1].copyWith(relatedRecordId: giftId2, isReturned: true);
+      gifts[index2] = gifts[index2].copyWith(relatedRecordId: giftId1, isReturned: true);
+      await _saveGifts(gifts);
+    }
+  }
+
+  /// 获取待处理记录数量
+  Future<int> getPendingCount({bool includeEventBooks = true}) async {
+    final gifts = await _loadGifts();
+    return gifts.where((g) => !g.isReturned && (includeEventBooks || g.eventBookId == null)).length;
   }
 }
 

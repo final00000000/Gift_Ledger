@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/services.dart';
 // 移除不兼容的 imports
 // import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -10,18 +9,20 @@ import 'screens/dashboard_screen.dart';
 import 'screens/statistics_screen.dart';
 import 'screens/add_record_screen.dart';
 import 'screens/settings_screen.dart';
+import 'services/notification_service.dart';
 
 // 条件导入
-import 'platform_check_stub.dart' if (dart.library.io) 'platform_check.dart';
-
 // 条件导入 - 仅桌面端需要初始化
 import 'services/db_init_native.dart' if (dart.library.js_interop) 'services/db_init_stub.dart' as db_init;
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // 初始化数据库 (仅桌面端)
   db_init.initializeDatabase();
+
+  // 初始化通知服务
+  await NotificationService().initialize();
 
   // 设置系统UI样式
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(

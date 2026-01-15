@@ -4,6 +4,7 @@ import '../models/gift.dart';
 import '../models/guest.dart';
 import '../services/storage_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/lunar_utils.dart';
 import '../widgets/balance_card.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/gift_list_item.dart';
@@ -11,6 +12,8 @@ import '../widgets/skeleton.dart';
 import '../widgets/app_logo.dart';
 import 'add_record_screen.dart';
 import 'record_list_screen.dart';
+import 'pending_list_screen.dart';
+import 'event_book_list_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -26,6 +29,7 @@ class DashboardScreenState extends State<DashboardScreen> {
   List<Gift> _recentGifts = [];
   Map<int, Guest> _guestMap = {};
   bool _isLoading = true;
+  int _pendingCount = 0;  // 待处理数量
 
   @override
   void initState() {
@@ -37,22 +41,30 @@ class DashboardScreenState extends State<DashboardScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final totalReceived = await _db.getTotalReceived();
-      final totalSent = await _db.getTotalSent();
-      final recentGifts = await _db.getRecentGifts(limit: 10);
-      final guests = await _db.getAllGuests();
+      final includeEventBooks = await _db.getStatsIncludeEventBooks();
+      
+      // 并行加载所有数据
+      final results = await Future.wait([
+        _db.getTotalReceived(includeEventBooks: includeEventBooks),
+        _db.getTotalSent(includeEventBooks: includeEventBooks),
+        _db.getRecentGifts(limit: 10),
+        _db.getAllGuests(),
+        _db.getPendingCount(includeEventBooks: includeEventBooks),
+      ]);
 
       if (mounted) {
         setState(() {
-          _totalReceived = totalReceived;
-          _totalSent = totalSent;
-          _recentGifts = recentGifts;
+          _totalReceived = results[0] as double;
+          _totalSent = results[1] as double;
+          _recentGifts = results[2] as List<Gift>;
+          final guests = results[3] as List<Guest>;
           _guestMap = {for (var g in guests) g.id!: g};
+          _pendingCount = results[4] as int;
           _isLoading = false;
         });
       }
     } catch (e) {
-      print('Error loading data: $e');
+      debugPrint('Error loading data: $e');
       if (mounted) {
         setState(() => _isLoading = false);
       }
@@ -170,6 +182,7 @@ class DashboardScreenState extends State<DashboardScreen> {
             _buildDetailRow('事由', gift.eventType),
             _buildDetailRow('金额', '¥${gift.amount.toStringAsFixed(0)}'),
             _buildDetailRow('日期', DateFormat('yyyy年MM月dd日').format(gift.date)),
+            _buildDetailRow('农历', LunarUtils.getFullLunarString(gift.date)),
             if (gift.note != null && gift.note!.isNotEmpty)
               _buildDetailRow('备注', gift.note!),
             const SizedBox(height: 24),
@@ -313,17 +326,96 @@ class DashboardScreenState extends State<DashboardScreen> {
                           '随礼记',
                           style: Theme.of(context).textTheme.headlineMedium,
                         ),
+                        const Spacer(),
+                        // 待处理入口
+                        IconButton(
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const PendingListScreen(),
+                              ),
+                            ).then((_) => refreshData());
+                          },
+                          icon: Badge(
+                            isLabelVisible: _pendingCount > 0,
+                            label: Text('$_pendingCount'),
+                            child: const Icon(Icons.pending_actions_rounded),
+                          ),
+                        ),
                       ],
                     ),
                   ),
                 ),
                 // 收支卡片 - 添加点击事件
                 SliverToBoxAdapter(
-                  child: BalanceCard(
-                    totalReceived: _totalReceived,
-                    totalSent: _totalSent,
-                    onReceivedTap: () => _navigateToRecordList(true),
-                    onSentTap: () => _navigateToRecordList(false),
+                  child: RepaintBoundary(
+                    child: BalanceCard(
+                      totalReceived: _totalReceived,
+                      totalSent: _totalSent,
+                      onReceivedTap: () => _navigateToRecordList(true),
+                      onSentTap: () => _navigateToRecordList(false),
+                    ),
+                  ),
+                ),
+                // 活动簿入口
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacingL, vertical: 8),
+                    child: Material(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      child: InkWell(
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const EventBookListScreen(),
+                            ),
+                          ).then((_) => refreshData());
+                        },
+                        borderRadius: BorderRadius.circular(16),
+                        child: Padding(
+                          padding: const EdgeInsets.all(20),
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: Colors.purple.withOpacity(0.1),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(Icons.book, color: Colors.purple),
+                              ),
+                              const SizedBox(width: 16),
+                              const Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      '活动簿',
+                                      style: TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.bold,
+                                        color: AppTheme.textPrimary,
+                                      ),
+                                    ),
+                                    Text(
+                                      '管理婚礼、满月酒等特定活动的礼金',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: AppTheme.textSecondary,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const Icon(Icons.chevron_right, color: Colors.grey),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
                 ),
                 // 最近记录标题
@@ -373,10 +465,12 @@ class DashboardScreenState extends State<DashboardScreen> {
                         (context, index) {
                           final gift = _recentGifts[index];
                           final guest = _guestMap[gift.guestId];
-                          return GiftListItem(
-                            gift: gift,
-                            guest: guest,
-                            onTap: () => _showGiftDetail(gift, guest),
+                          return RepaintBoundary(
+                            child: GiftListItem(
+                              gift: gift,
+                              guest: guest,
+                              onTap: () => _showGiftDetail(gift, guest),
+                            ),
                           );
                         },
                         childCount: _recentGifts.length,

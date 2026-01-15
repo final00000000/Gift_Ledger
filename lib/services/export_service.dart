@@ -101,6 +101,52 @@ class ExportService {
     }
   }
 
+  /// 导出待处理清单到Excel
+  Future<String?> exportPendingListToExcel({
+    required List<Gift> gifts,
+    required Map<int, Guest> guestMap,
+    required String listType, // '未还' 或 '待收'
+  }) async {
+    try {
+      var excel = Excel.createExcel();
+      Sheet sheet = excel['Sheet1'];
+
+      List<String> headers = ['姓名', '关系', '事由', '金额', '日期', '已过天数', '提醒次数'];
+      sheet.appendRow(headers.map((h) => TextCellValue(h)).toList());
+
+      for (var gift in gifts) {
+        final guest = guestMap[gift.guestId];
+        final guestName = guest?.name ?? '未知';
+        final relationship = guest?.relationship ?? '其他';
+        final daysPassed = DateTime.now().difference(gift.date).inDays;
+        
+        List<CellValue> row = [
+          TextCellValue(guestName),
+          TextCellValue(relationship),
+          TextCellValue(gift.eventType),
+          DoubleCellValue(gift.amount),
+          TextCellValue(_dateFormat.format(gift.date)),
+          IntCellValue(daysPassed),
+          IntCellValue(gift.remindedCount),
+        ];
+        sheet.appendRow(row);
+      }
+      
+      final fileName = '随礼记_${listType}清单_${_dateFormat.format(DateTime.now())}.xlsx';
+      final fileBytes = excel.encode();
+
+      if (fileBytes != null) {
+        return await _saveFile(
+          bytes: fileBytes,
+          fileName: fileName,
+        );
+      }
+      return null;
+    } catch (e) {
+      throw Exception('导出待处理清单失败: $e');
+    }
+  }
+
   Future<void> shareFile(String path) async {
     final mimeType = path.endsWith('.json') 
         ? 'application/json' 

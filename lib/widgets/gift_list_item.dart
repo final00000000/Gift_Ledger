@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import '../models/gift.dart';
 import '../models/guest.dart';
 import '../theme/app_theme.dart';
+import '../utils/lunar_utils.dart';
 
 class GiftListItem extends StatelessWidget {
   final Gift gift;
@@ -24,8 +25,8 @@ class GiftListItem extends StatelessWidget {
 
     return Container(
       margin: const EdgeInsets.symmetric(
-        horizontal: AppTheme.spacingM,
-        vertical: AppTheme.spacingS,
+        horizontal: AppTheme.spacingS,
+        vertical: AppTheme.spacingXS,
       ),
       child: Material(
         color: Theme.of(context).cardColor,
@@ -135,10 +136,13 @@ class GiftListItem extends StatelessWidget {
                               ),
                             ),
                             const SizedBox(width: 6),
-                            Text(
-                              dateFormat.format(gift.date),
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: Theme.of(context).textTheme.bodySmall?.color?.withOpacity(0.7),
+                            Flexible(
+                              child: Text(
+                                '${dateFormat.format(gift.date)} (${LunarUtils.getLunarDateString(gift.date)})',
+                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  color: Theme.of(context).textTheme.bodySmall?.color?.withOpacity(0.7),
+                                ),
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ),
                           ],

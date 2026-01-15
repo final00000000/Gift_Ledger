@@ -1,7 +1,7 @@
 name: gift_ledger
 description: "份子钱记账 - 礼金收支追踪与管理"
 publish_to: 'none'
-version: 1.0.1+2
+version: 1.2.0+3
 
 environment:
   sdk: ^3.2.0
@@ -22,7 +22,10 @@ dependencies:
   excel: ^4.0.3            # Excel读写
   share_plus: ^8.0.0       # 分享文件
   permission_handler: ^11.0.0  # 权限管理
+  flutter_slidable: ^3.0.0     # 滑动操作
   lunar: ^1.7.8
+  flutter_local_notifications: ^18.0.1  # 本地推送
+  timezone: ^0.10.0             # 时区支持
 
 dev_dependencies:
   flutter_test:
