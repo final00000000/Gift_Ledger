@@ -48,16 +48,33 @@ app.*.map.json
 .spec-workflow/
 GITHUB_GUIDE.md
 CONTRIBUTING.md
-cleanup.ps1
 tmpclaude-*
 nul
 
 # Brain/artifacts directory
 .gemini/
 
-# Build logs and dev tools
-build_log.txt
-devtools_options.yaml
-
 # Release builds (APKs, etc.)
 releases/
+
+# Build directory
+build/
+
+# IDE specific files
+.idea/
+.vscode/
+
+# Mac specific
+.DS_Store
+
+# IDE project files
+*.iml
+*.ipr
+*.iws
+
+# Log files
+*.log
+*.buildlog
+
+# Editor swap files
+*.swp
