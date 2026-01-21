@@ -20,6 +20,8 @@ class SettingsScreenState extends State<SettingsScreen> {
   bool _useFuzzyAmount = false;
   bool _notificationsEnabled = false;
   bool _statsIncludeEventBooks = true;
+  bool _eventBooksEnabled = true;
+  bool _showHomeAmounts = true;
   final TemplateService _templateService = TemplateService();
   final NotificationService _notificationService = NotificationService();
   final StorageService _db = StorageService();
@@ -37,6 +39,8 @@ class SettingsScreenState extends State<SettingsScreen> {
       _templateService.getUseFuzzyAmount(),
       _notificationService.isEnabled(),
       _db.getStatsIncludeEventBooks(),
+      _db.getEventBooksEnabled(),
+      _db.getShowHomeAmounts(),
     ]);
     
     final prefs = results[0] as SharedPreferences;
@@ -45,6 +49,8 @@ class SettingsScreenState extends State<SettingsScreen> {
       _useFuzzyAmount = results[1] as bool;
       _notificationsEnabled = results[2] as bool;
       _statsIncludeEventBooks = results[3] as bool;
+      _eventBooksEnabled = results[4] as bool;
+      _showHomeAmounts = results[5] as bool;
     });
   }
 
@@ -117,6 +123,32 @@ class SettingsScreenState extends State<SettingsScreen> {
                         onChanged: (v) async {
                           await _db.setStatsIncludeEventBooks(v);
                           setState(() => _statsIncludeEventBooks = v);
+                          if (mounted) CustomToast.show(context, '设置已保存');
+                        },
+                      ),
+                      const Divider(height: 1, indent: 52),
+                      _buildSwitchTile(
+                        icon: Icons.visibility_rounded,
+                        iconColor: Colors.blueGrey,
+                        title: '显示首页金额',
+                        subtitle: '关闭后首页金额显示为***',
+                        value: _showHomeAmounts,
+                        onChanged: (v) async {
+                          await _db.setShowHomeAmounts(v);
+                          setState(() => _showHomeAmounts = v);
+                          if (mounted) CustomToast.show(context, '设置已保存');
+                        },
+                      ),
+                      const Divider(height: 1, indent: 52),
+                      _buildSwitchTile(
+                        icon: Icons.book_outlined,
+                        iconColor: Colors.deepPurple,
+                        title: '启用活动簿',
+                        subtitle: '关闭后首页不显示活动簿入口',
+                        value: _eventBooksEnabled,
+                        onChanged: (v) async {
+                          await _db.setEventBooksEnabled(v);
+                          setState(() => _eventBooksEnabled = v);
                           if (mounted) CustomToast.show(context, '设置已保存');
                         },
                       ),
@@ -212,7 +244,7 @@ class SettingsScreenState extends State<SettingsScreen> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 32),
+                  const SizedBox(height: 120),
                 ],
               ),
             ),

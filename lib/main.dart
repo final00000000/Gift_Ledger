@@ -3,6 +3,9 @@ import 'package:flutter/services.dart';
 // 移除不兼容的 imports
 // import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 // import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
+// 移除不兼容的 imports
+// import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+// import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'theme/app_theme.dart';
 import 'screens/dashboard_screen.dart';
@@ -10,6 +13,8 @@ import 'screens/statistics_screen.dart';
 import 'screens/add_record_screen.dart';
 import 'screens/settings_screen.dart';
 import 'services/notification_service.dart';
+// import 'widgets/quantum_bottom_nav_bar.dart'; // 暂时禁用自定义导航栏
+
 
 // 条件导入
 // 条件导入 - 仅桌面端需要初始化
@@ -72,6 +77,11 @@ class MainNavigation extends StatefulWidget {
 
 class _MainNavigationState extends State<MainNavigation> {
   int _currentIndex = 0;
+  final List<_NavItem> _navItems = [
+    _NavItem(label: '首页', icon: Icons.home_rounded),
+    _NavItem(label: '统计', icon: Icons.bar_chart_rounded),
+    _NavItem(label: '设置', icon: Icons.settings_rounded),
+  ];
 
   // GlobalKey 用于访问子页面状态
   final GlobalKey<DashboardScreenState> _dashboardKey = GlobalKey();
@@ -84,11 +94,14 @@ class _MainNavigationState extends State<MainNavigation> {
     SettingsScreen(key: _settingsKey),
   ];
 
-  // 刷新所有页面
-  void _refreshAllPages() {
-    _dashboardKey.currentState?.refreshData();
-    _statisticsKey.currentState?.refreshData();
-    _settingsKey.currentState?.refreshData();
+  void _refreshPage(int index) {
+    if (index == 0) {
+      _dashboardKey.currentState?.refreshData();
+    } else if (index == 1) {
+      _statisticsKey.currentState?.refreshData();
+    } else if (index == 2) {
+      _settingsKey.currentState?.refreshData();
+    }
   }
 
   // 打开添加记录页面
@@ -102,121 +115,126 @@ class _MainNavigationState extends State<MainNavigation> {
     
     // 如果保存成功，刷新所有页面
     if (result == true) {
-      _refreshAllPages();
+      _refreshPage(0);
     }
+  }
+
+  void _onTabSelected(int index) {
+    if (_currentIndex == index) return;
+    setState(() => _currentIndex = index);
+    _refreshPage(index);
+  }
+
+  Widget _buildDynamicDock() {
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.85),
+        borderRadius: BorderRadius.circular(40),
+        border: Border.all(color: Colors.white, width: 0.5),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 24,
+            offset: const Offset(0, 12),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: List.generate(_navItems.length, (index) {
+          return _buildTabItem(index);
+        }),
+      ),
+    );
+  }
+
+  Widget _buildTabItem(int index) {
+    final isActive = _currentIndex == index;
+    final item = _navItems[index];
+
+    return GestureDetector(
+      onTap: () => _onTabSelected(index),
+      behavior: HitTestBehavior.opaque,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        curve: Curves.easeOut,
+        margin: const EdgeInsets.symmetric(horizontal: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: isActive ? AppTheme.textPrimary : Colors.transparent,
+          borderRadius: BorderRadius.circular(28),
+        ),
+        child: Icon(
+          item.icon,
+          color: isActive ? Colors.white : AppTheme.textSecondary,
+          size: 24,
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    const dockBottomPadding = 12.0;
+    const dockHeight = 64.0;
+    const fabSpacing = 12.0;
+    final bottomInset = MediaQuery.of(context).padding.bottom;
+    final dockSafeBottom = bottomInset > dockBottomPadding ? bottomInset : dockBottomPadding;
+    final fabBottomOffset = dockSafeBottom + dockHeight + fabSpacing;
     return Scaffold(
-      body: IndexedStack(
-        index: _currentIndex,
-        children: _screens,
-      ),
-      floatingActionButton: _currentIndex == 0 ? FloatingActionButton(
-        onPressed: _openAddRecord,
-        backgroundColor: AppTheme.primaryColor,
-        child: const Icon(Icons.add_rounded, size: 28, color: Colors.white),
-      ) : null,
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 20,
-              offset: const Offset(0, -4),
-            ),
-          ],
-        ),
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: AppTheme.spacingXL,
-              vertical: AppTheme.spacingS,
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _buildNavItem(
-                  icon: Icons.home_rounded,
-                  label: '首页',
-                  index: 0,
+      // extendBody 移除，避免与子页面 Scaffold 冲突导致内容不可见
+      backgroundColor: AppTheme.backgroundColor,
+      body: Stack(
+        children: [
+          Stack(
+            children: List.generate(_screens.length, (index) {
+              final isActive = _currentIndex == index;
+              return IgnorePointer(
+                ignoring: !isActive,
+                child: AnimatedOpacity(
+                  duration: const Duration(milliseconds: 120),
+                  curve: Curves.easeOut,
+                  opacity: isActive ? 1 : 0,
+                  child: _screens[index],
                 ),
-                _buildNavItem(
-                  icon: Icons.bar_chart_rounded,
-                  label: '统计',
-                  index: 1,
-                ),
-                _buildNavItem(
-                  icon: Icons.settings_rounded,
-                  label: '设置',
-                  index: 2,
-                ),
-              ],
-            ),
+              );
+            }),
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildNavItem({
-    required IconData icon,
-    required String label,
-    required int index,
-  }) {
-    final isSelected = _currentIndex == index;
-
-    return GestureDetector(
-      onTap: () {
-        setState(() => _currentIndex = index);
-        // 切换时刷新对应页面
-        switch (index) {
-          case 0:
-            _dashboardKey.currentState?.refreshData();
-            break;
-          case 1:
-            _statisticsKey.currentState?.refreshData();
-            break;
-          case 2:
-            _settingsKey.currentState?.refreshData();
-            break;
-        }
-      },
-      behavior: HitTestBehavior.opaque,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppTheme.spacingL,
-          vertical: AppTheme.spacingS,
-        ),
-        decoration: BoxDecoration(
-          color: isSelected 
-              ? AppTheme.primaryColor.withOpacity(0.1) 
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(AppTheme.radiusLarge),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              color: isSelected ? AppTheme.primaryColor : AppTheme.textSecondary,
-              size: 24,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: TextStyle(
-                color: isSelected ? AppTheme.primaryColor : AppTheme.textSecondary,
-                fontSize: 12,
-                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: SafeArea(
+              minimum: EdgeInsets.only(bottom: dockBottomPadding),
+              child: Center(
+                child: RepaintBoundary(
+                  child: _buildDynamicDock(),
+                ),
               ),
             ),
-          ],
-        ),
+          ),
+          if (_currentIndex == 0)
+            Positioned(
+              right: AppTheme.spacingL,
+              bottom: fabBottomOffset,
+              child: FloatingActionButton(
+                onPressed: _openAddRecord,
+                backgroundColor: AppTheme.primaryColor,
+                elevation: 4,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                child: const Icon(Icons.add_rounded, size: 28, color: Colors.white),
+              ),
+            ),
+        ],
       ),
     );
   }
+}
+
+class _NavItem {
+  final String label;
+  final IconData icon;
+
+  const _NavItem({required this.label, required this.icon});
 }

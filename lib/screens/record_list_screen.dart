@@ -85,14 +85,18 @@ class _RecordListScreenState extends State<RecordListScreen>
     });
   }
 
+  // 新增变量存储统计信息
+  double _filteredTotalAmount = 0;
+  int _filteredCount = 0;
+
   void _filterGifts() {
-    _filteredGifts = _allGifts.where((gift) {
-      // 分类筛?
+    final filtered = _allGifts.where((gift) {
+      // 分类筛选
       if (_selectedCategory != 'all' && gift.eventType != _selectedCategory) {
         return false;
       }
 
-      // 搜索筛选（需要通过 guestMap 获取名字?
+      // 搜索筛选（需要通过 guestMap 获取名字）
       if (_searchQuery.isNotEmpty) {
         final guest = _guestMap[gift.guestId];
         final nameMatch = guest?.name.toLowerCase().contains(_searchQuery) ?? false;
@@ -102,9 +106,21 @@ class _RecordListScreenState extends State<RecordListScreen>
 
       return true;
     }).toList();
+
+    // 计算统计数据
+    double total = 0;
+    for (var gift in filtered) {
+      total += gift.amount;
+    }
+
+    setState(() {
+      _filteredGifts = filtered;
+      _filteredTotalAmount = total;
+      _filteredCount = filtered.length;
+    });
   }
 
-  /// 获取主题色，null 时使用默认主?
+  /// 获取主题色，null 时使用默认主题
   Color _getAccentColor() {
     if (widget.isReceived == null) return AppTheme.primaryColor;
     return widget.isReceived! ? AppTheme.primaryColor : AppTheme.accentColor;
@@ -117,10 +133,55 @@ class _RecordListScreenState extends State<RecordListScreen>
       body: CustomScrollView(
         slivers: [
           _buildSliverAppBar(),
+          _buildSummaryHeader(), // 新增统计头
           _buildSearchBar(),
           _buildCategoryFilter(),
           _buildRecordList(),
         ],
+      ),
+    );
+  }
+  
+  // 新增统计头部 Widget
+  Widget _buildSummaryHeader() {
+    return SliverToBoxAdapter(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(AppTheme.spacingL, AppTheme.spacingM, AppTheme.spacingL, 0),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: _getAccentColor().withOpacity(0.1),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                '$_filteredCount 笔记录',
+                style: TextStyle(
+                  color: _getAccentColor(),
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                ),
+              ),
+            ),
+            const Spacer(),
+            Text(
+              '总计 ',
+              style: TextStyle(
+                color: AppTheme.textSecondary.withOpacity(0.7),
+                fontSize: 13,
+              ),
+            ),
+            Text(
+              '¥${_filteredTotalAmount.toStringAsFixed(0)}',
+              style: TextStyle(
+                color: AppTheme.textPrimary,
+                fontWeight: FontWeight.w900,
+                fontSize: 18,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -215,14 +276,16 @@ class _RecordListScreenState extends State<RecordListScreen>
 
     return SliverToBoxAdapter(
       child: Container(
-        height: 50,
+        height: 40, // 稍微减小高度
         margin: const EdgeInsets.symmetric(horizontal: AppTheme.spacingL),
-        child: ListView.builder(
+        child: ListView.separated( // 使用 separated 自动处理间距
           scrollDirection: Axis.horizontal,
           itemCount: categories.length,
+          separatorBuilder: (context, index) => const SizedBox(width: 10),
           itemBuilder: (context, index) {
             final category = categories[index];
             final isSelected = _selectedCategory == category['id'];
+            final activeColor = _getAccentColor();
 
             return GestureDetector(
               onTap: () {
@@ -232,31 +295,23 @@ class _RecordListScreenState extends State<RecordListScreen>
                 });
               },
               child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                margin: const EdgeInsets.only(right: 12),
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                duration: const Duration(milliseconds: 300),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
                 decoration: BoxDecoration(
-                  color: isSelected
-                      ? _getAccentColor()
-                      : Colors.white,
+                  color: isSelected ? activeColor : Colors.transparent,
                   borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    if (isSelected)
-                      BoxShadow(
-                        color: _getAccentColor().withOpacity(0.3),
-                        blurRadius: 8,
-                        offset: const Offset(0, 4),
-                      ),
-                  ],
+                  border: Border.all(
+                    color: isSelected ? activeColor : AppTheme.textSecondary.withOpacity(0.2),
+                    width: 1.5,
+                  ),
                 ),
-                child: Center(
-                  child: Text(
-                    category['label']!,
-                    style: TextStyle(
-                      color: isSelected ? Theme.of(context).colorScheme.onPrimary : AppTheme.textPrimary,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 14,
-                    ),
+                alignment: Alignment.center,
+                child: Text(
+                  category['label']!,
+                  style: TextStyle(
+                    color: isSelected ? Colors.white : AppTheme.textSecondary,
+                    fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                    fontSize: 13,
                   ),
                 ),
               ),
@@ -299,40 +354,113 @@ class _RecordListScreenState extends State<RecordListScreen>
       );
     }
 
-    return SliverPadding(
-      padding: const EdgeInsets.all(AppTheme.spacingL),
-      sliver: SliverList(
-        delegate: SliverChildBuilderDelegate(
-          (context, index) {
-            final gift = _filteredGifts[index];
-            final guest = _guestMap[gift.id];
+    // 构建分组列表项
+    final List<Widget> listItems = [];
+    String? currentMonth;
 
-            final animation = Tween<double>(begin: 0, end: 1).animate(
-              CurvedAnimation(
-                parent: _animationController,
-                curve: Interval(
-                  index * 0.05,
-                  (index * 0.05) + 0.3,
-                  curve: Curves.easeOut,
+    for (int i = 0; i < _filteredGifts.length; i++) {
+      final gift = _filteredGifts[i];
+      final monthStr = DateFormat('yyyy年MM月').format(gift.date);
+
+      // 如果月份变化，插入标题
+      if (currentMonth != monthStr) {
+        currentMonth = monthStr;
+        listItems.add(
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 24, 4, 16),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.02),
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.calendar_month_rounded,
+                        size: 16,
+                        color: _getAccentColor().withOpacity(0.6),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        monthStr,
+                        style: TextStyle(
+                          color: AppTheme.textPrimary,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 15,
+                          letterSpacing: -0.5,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Container(
+                    height: 1,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          _getAccentColor().withOpacity(0.2),
+                          _getAccentColor().withOpacity(0),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      }
+
+      final guest = _guestMap[gift.guestId]; // 修复：这里应该是 guestId 而不是 id
+      
+      // 构建动画
+      final animation = Tween<double>(begin: 0, end: 1).animate(
+        CurvedAnimation(
+          parent: _animationController,
+          curve: Interval(
+            (i * 0.05).clamp(0.0, 1.0),
+            ((i * 0.05) + 0.3).clamp(0.0, 1.0),
+            curve: Curves.easeOut,
+          ),
+        ),
+      );
+
+      listItems.add(
+        AnimatedBuilder(
+          animation: animation,
+          builder: (context, child) {
+            return Transform.translate(
+              offset: Offset(0, 30 * (1 - animation.value)),
+              child: Opacity(
+                opacity: animation.value,
+                child: child,
               ),
             );
-
-            return AnimatedBuilder(
-              animation: animation,
-              builder: (context, child) {
-                return Transform.translate(
-                  offset: Offset(0, 50 * (1 - animation.value)),
-                  child: Opacity(
-                    opacity: animation.value,
-                    child: child,
-                  ),
-                );
-              },
-              child: _buildGiftItem(gift, guest),
-            );
           },
-          childCount: _filteredGifts.length,
+          child: _buildGiftItem(gift, guest),
+        ),
+      );
+    }
+
+    return SliverPadding(
+      padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacingL, vertical: AppTheme.spacingS),
+      sliver: SliverList(
+        delegate: SliverChildBuilderDelegate(
+          (context, index) => listItems[index],
+          childCount: listItems.length,
         ),
       ),
     );
@@ -340,20 +468,18 @@ class _RecordListScreenState extends State<RecordListScreen>
 
   Widget _buildGiftItem(Gift gift, Guest? guest) {
     final guestName = guest?.name ?? '未知联系人';
-    // 使用 gift.isReceived 决定颜色，支持"全部记录"视图
     final itemColor = gift.isReceived ? AppTheme.primaryColor : AppTheme.accentColor;
-    final solarDate = DateFormat('yyyy-MM-dd').format(gift.date);
+    final solarDate = DateFormat('MM-dd').format(gift.date); // 缩短日期显示，因为月份已经在标题了
     final lunarDate = LunarUtils.getLunarDateString(gift.date);
-    final dateText = lunarDate.isEmpty ? solarDate : '$solarDate ($lunarDate)';
     
     return Container(
-      margin: const EdgeInsets.only(bottom: AppTheme.spacingM),
+      margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.03),
+            color: Colors.black.withOpacity(0.02),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -362,25 +488,35 @@ class _RecordListScreenState extends State<RecordListScreen>
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(20),
           onTap: () => _showGiftDetail(gift, guest),
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Row(
               children: [
+                // 左侧图标：更具设计感的容器
                 Container(
-                  width: 48,
-                  height: 48,
+                  width: 52,
+                  height: 52,
                   decoration: BoxDecoration(
-                    color: itemColor.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12),
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        itemColor.withOpacity(0.12),
+                        itemColor.withOpacity(0.04),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(18),
                   ),
                   child: Icon(
-                    gift.isReceived ? Icons.arrow_downward : Icons.arrow_upward,
+                    gift.isReceived ? Icons.move_to_inbox_rounded : Icons.outbox_rounded,
                     color: itemColor,
+                    size: 24,
                   ),
                 ),
                 const SizedBox(width: 16),
+                // 中间信息：清晰的层级
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -388,67 +524,73 @@ class _RecordListScreenState extends State<RecordListScreen>
                       _buildHighlightedText(
                         guestName,
                         const TextStyle(
-                          fontWeight: FontWeight.w800,
+                          fontWeight: FontWeight.w900,
                           fontSize: 16,
                           color: AppTheme.textPrimary,
+                          letterSpacing: -0.5,
                         ),
                       ),
                       const SizedBox(height: 4),
                       Row(
                         children: [
-                          Flexible(
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: itemColor.withOpacity(0.06),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
                             child: Text(
                               gift.eventType,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 13,
-                                color: AppTheme.textSecondary,
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: itemColor.withOpacity(0.8),
                               ),
                             ),
                           ),
                           const SizedBox(width: 8),
                           Text(
-                            '·',
+                            solarDate,
                             style: TextStyle(
+                              fontSize: 12,
                               color: AppTheme.textSecondary.withOpacity(0.5),
+                              fontWeight: FontWeight.w500,
                             ),
                           ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              dateText,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 13,
-                                color: AppTheme.textSecondary,
+                          if (lunarDate.isNotEmpty) ...[
+                            Text(
+                              ' · $lunarDate',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: AppTheme.textSecondary.withOpacity(0.4),
                               ),
                             ),
-                          ),
+                          ],
                         ],
                       ),
-                      if (gift.note != null && gift.note!.isNotEmpty) ...[
-                        const SizedBox(height: 4),
-                        _buildHighlightedText(
-                          gift.note!,
-                          TextStyle(
-                            fontSize: 12,
-                            color: AppTheme.textSecondary.withOpacity(0.7),
-                          ),
-                        ),
-                      ],
                     ],
                   ),
                 ),
-                const SizedBox(width: 12),
-                Text(
-                  '${gift.isReceived ? "+" : "-"}¥${gift.amount.toStringAsFixed(0)}',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: itemColor,
-                  ),
+                // 右侧金额：醒目加粗
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      '${gift.isReceived ? "+" : "-"}¥${gift.amount.toStringAsFixed(0)}',
+                      style: TextStyle(
+                        fontSize: 19,
+                        fontWeight: FontWeight.w900,
+                        color: itemColor,
+                        letterSpacing: -0.5,
+                      ),
+                    ),
+                    if (gift.note != null && gift.note!.isNotEmpty)
+                      const Icon(
+                        Icons.notes_rounded,
+                        size: 14,
+                        color: Colors.grey,
+                      ),
+                  ],
                 ),
               ],
             ),

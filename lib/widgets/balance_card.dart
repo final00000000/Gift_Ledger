@@ -4,6 +4,7 @@ import '../theme/app_theme.dart';
 class BalanceCard extends StatelessWidget {
   final double totalReceived;
   final double totalSent;
+  final bool showAmounts;
   final VoidCallback? onReceivedTap;
   final VoidCallback? onSentTap;
 
@@ -11,6 +12,7 @@ class BalanceCard extends StatelessWidget {
     super.key,
     required this.totalReceived,
     required this.totalSent,
+    required this.showAmounts,
     this.onReceivedTap,
     this.onSentTap,
   });
@@ -18,152 +20,32 @@ class BalanceCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.all(AppTheme.spacingM),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Theme.of(context).cardColor,
-            Theme.of(context).colorScheme.primary.withOpacity(0.05),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(AppTheme.radiusLarge),
-        border: Border.all(color: Colors.black.withOpacity(0.04)),
-        boxShadow: [
-          BoxShadow(
-            color: Theme.of(context).colorScheme.primary.withOpacity(0.05),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Column(
+      margin: const EdgeInsets.symmetric(horizontal: AppTheme.spacingL, vertical: AppTheme.spacingS),
+      child: Row(
         children: [
-          // 收礼金额 - 可点击
-          InkWell(
-            onTap: onReceivedTap,
-            borderRadius: const BorderRadius.only(
-              topLeft: Radius.circular(AppTheme.radiusLarge),
-              topRight: Radius.circular(AppTheme.radiusLarge),
-            ),
-            child: Container(
-              padding: const EdgeInsets.fromLTRB(
-                AppTheme.spacingL,
-                AppTheme.spacingL,
-                AppTheme.spacingL,
-                AppTheme.spacingM,
-              ),
-              decoration: BoxDecoration(
-                border: Border(
-                  bottom: BorderSide(
-                    color: AppTheme.accentColor.withOpacity(0.2),
-                    width: 1,
-                  ),
-                ),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(AppTheme.spacingS),
-                    decoration: BoxDecoration(
-                      color: AppTheme.primaryColor.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(AppTheme.radiusSmall),
-                    ),
-                    child: const Icon(
-                      Icons.arrow_downward_rounded,
-                      color: AppTheme.primaryColor,
-                      size: 24,
-                    ),
-                  ),
-                  const SizedBox(width: AppTheme.spacingM),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '收礼总额',
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: AppTheme.textSecondary,
-                          ),
-                        ),
-                        const SizedBox(height: AppTheme.spacingXS),
-                        Text(
-                          '¥${_formatAmount(totalReceived)}',
-                          style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                            color: AppTheme.primaryColor,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (onReceivedTap != null)
-                    Icon(
-                      Icons.chevron_right,
-                      color: AppTheme.textSecondary.withOpacity(0.5),
-                    ),
-                ],
-              ),
+          // 收礼卡片
+          Expanded(
+            child: _buildSingleCard(
+              context,
+              title: '收礼总额',
+              amount: totalReceived,
+              icon: Icons.move_to_inbox_rounded,
+              color: AppTheme.primaryColor,
+              backgroundColor: const Color(0xFFFFF1F2), // Very Light Red
+              onTap: onReceivedTap,
             ),
           ),
-          // 送礼金额 - 可点击
-          InkWell(
-            onTap: onSentTap,
-            borderRadius: const BorderRadius.only(
-              bottomLeft: Radius.circular(AppTheme.radiusLarge),
-              bottomRight: Radius.circular(AppTheme.radiusLarge),
-            ),
-            child: Container(
-              padding: const EdgeInsets.fromLTRB(
-                AppTheme.spacingL,
-                AppTheme.spacingM,
-                AppTheme.spacingL,
-                AppTheme.spacingL,
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(AppTheme.spacingS),
-                    decoration: BoxDecoration(
-                      color: AppTheme.accentColor.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(AppTheme.radiusSmall),
-                    ),
-                    child: Icon(
-                      Icons.arrow_upward_rounded,
-                      color: AppTheme.accentColor.withOpacity(0.8),
-                      size: 24,
-                    ),
-                  ),
-                  const SizedBox(width: AppTheme.spacingM),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '送礼总额',
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: AppTheme.textSecondary,
-                          ),
-                        ),
-                        const SizedBox(height: AppTheme.spacingXS),
-                        Text(
-                          '¥${_formatAmount(totalSent)}',
-                          style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                            color: AppTheme.accentColor,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (onSentTap != null)
-                    Icon(
-                      Icons.chevron_right,
-                      color: AppTheme.textSecondary.withOpacity(0.5),
-                    ),
-                ],
-              ),
+          const SizedBox(width: 16),
+          // 送礼卡片
+          Expanded(
+            child: _buildSingleCard(
+              context,
+              title: '送礼总额',
+              amount: totalSent,
+              icon: Icons.outbox_rounded,
+              color: AppTheme.accentColor,
+              backgroundColor: const Color(0xFFFFFBEB), // Very Light Amber
+              onTap: onSentTap,
             ),
           ),
         ],
@@ -171,9 +53,98 @@ class BalanceCard extends StatelessWidget {
     );
   }
 
+  Widget _buildSingleCard(
+    BuildContext context, {
+    required String title,
+    required double amount,
+    required IconData icon,
+    required Color color,
+    required Color backgroundColor,
+    required VoidCallback? onTap,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.03),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(24),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: backgroundColor,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        icon,
+                        color: color,
+                        size: 20,
+                      ),
+                    ),
+                    if (onTap != null)
+                      Icon(
+                        Icons.arrow_forward_ios_rounded,
+                        size: 12,
+                        color: AppTheme.textSecondary.withOpacity(0.3),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  title,
+                  style: TextStyle(
+                    color: AppTheme.textSecondary.withOpacity(0.8),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '¥${_formatAmount(amount)}',
+                  style: TextStyle(
+                    color: AppTheme.textPrimary,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -0.5,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   String _formatAmount(double amount) {
+    if (!showAmounts) {
+      return '***';
+    }
+    if (amount >= 1000000) {
+       return '${(amount / 10000).toStringAsFixed(1)}w';
+    }
     if (amount >= 10000) {
-      return '${(amount / 10000).toStringAsFixed(1)}万';
+      return '${(amount / 10000).toStringAsFixed(2)}w';
     }
     return amount.toStringAsFixed(0);
   }

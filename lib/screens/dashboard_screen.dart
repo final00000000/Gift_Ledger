@@ -30,6 +30,8 @@ class DashboardScreenState extends State<DashboardScreen> {
   Map<int, Guest> _guestMap = {};
   bool _isLoading = true;
   int _pendingCount = 0;  // 待处理数量
+  bool _eventBooksEnabled = true;
+  bool _showHomeAmounts = true;
 
   @override
   void initState() {
@@ -42,6 +44,8 @@ class DashboardScreenState extends State<DashboardScreen> {
 
     try {
       final includeEventBooks = await _db.getStatsIncludeEventBooks();
+      final eventBooksEnabled = await _db.getEventBooksEnabled();
+      final showHomeAmounts = await _db.getShowHomeAmounts();
       
       // 并行加载所有数据
       final results = await Future.wait([
@@ -60,13 +64,21 @@ class DashboardScreenState extends State<DashboardScreen> {
           final guests = results[3] as List<Guest>;
           _guestMap = {for (var g in guests) g.id!: g};
           _pendingCount = results[4] as int;
+          _eventBooksEnabled = eventBooksEnabled;
+          _showHomeAmounts = showHomeAmounts;
           _isLoading = false;
         });
       }
     } catch (e) {
       debugPrint('Error loading data: $e');
+      final eventBooksEnabled = await _db.getEventBooksEnabled();
+      final showHomeAmounts = await _db.getShowHomeAmounts();
       if (mounted) {
-        setState(() => _isLoading = false);
+        setState(() {
+          _eventBooksEnabled = eventBooksEnabled;
+          _showHomeAmounts = showHomeAmounts;
+          _isLoading = false;
+        });
       }
     }
   }
@@ -353,71 +365,72 @@ class DashboardScreenState extends State<DashboardScreen> {
                     child: BalanceCard(
                       totalReceived: _totalReceived,
                       totalSent: _totalSent,
+                      showAmounts: _showHomeAmounts,
                       onReceivedTap: () => _navigateToRecordList(true),
                       onSentTap: () => _navigateToRecordList(false),
                     ),
                   ),
                 ),
-                // 活动簿入口
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacingL, vertical: 8),
-                    child: Material(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      child: InkWell(
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => const EventBookListScreen(),
-                            ),
-                          ).then((_) => refreshData());
-                        },
+                if (_eventBooksEnabled)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacingL, vertical: 8),
+                      child: Material(
+                        color: Colors.white,
                         borderRadius: BorderRadius.circular(16),
-                        child: Padding(
-                          padding: const EdgeInsets.all(20),
-                          child: Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: Colors.purple.withOpacity(0.1),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: const Icon(Icons.book, color: Colors.purple),
+                        child: InkWell(
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const EventBookListScreen(),
                               ),
-                              const SizedBox(width: 16),
-                              const Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      '活动簿',
-                                      style: TextStyle(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.bold,
-                                        color: AppTheme.textPrimary,
-                                      ),
-                                    ),
-                                    Text(
-                                      '管理婚礼、满月酒等特定活动的礼金',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: AppTheme.textSecondary,
-                                      ),
-                                    ),
-                                  ],
+                            ).then((_) => refreshData());
+                          },
+                          borderRadius: BorderRadius.circular(16),
+                          child: Padding(
+                            padding: const EdgeInsets.all(20),
+                            child: Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: Colors.purple.withOpacity(0.1),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(Icons.book, color: Colors.purple),
                                 ),
-                              ),
-                              const Icon(Icons.chevron_right, color: Colors.grey),
-                            ],
+                                const SizedBox(width: 16),
+                                const Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        '活动簿',
+                                        style: TextStyle(
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.bold,
+                                          color: AppTheme.textPrimary,
+                                        ),
+                                      ),
+                                      Text(
+                                        '管理婚礼、满月酒等特定活动的礼金',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: AppTheme.textSecondary,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const Icon(Icons.chevron_right, color: Colors.grey),
+                              ],
+                            ),
                           ),
                         ),
                       ),
                     ),
                   ),
-                ),
                 // 最近记录标题
                 SliverToBoxAdapter(
                   child: Padding(
@@ -479,7 +492,7 @@ class DashboardScreenState extends State<DashboardScreen> {
                   ),
                 // 底部间距
                 const SliverToBoxAdapter(
-                  child: SizedBox(height: 100),
+                  child: SizedBox(height: 120),
                 ),
               ],
             ],

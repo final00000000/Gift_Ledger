@@ -12,6 +12,8 @@ class StorageService {
   StorageService._internal();
 
   static const String _statsIncludeEventBooksKey = 'stats_include_event_books';
+  static const String _eventBooksEnabledKey = 'event_books_enabled';
+  static const String _showAmountsKey = 'show_home_amounts';
 
   // Guest CRUD
   Future<int> insertGuest(Guest guest) {
@@ -111,6 +113,26 @@ class StorageService {
   Future<void> setStatsIncludeEventBooks(bool value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_statsIncludeEventBooksKey, value);
+  }
+
+  Future<bool> getEventBooksEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_eventBooksEnabledKey) ?? true;
+  }
+
+  Future<void> setEventBooksEnabled(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_eventBooksEnabledKey, value);
+  }
+
+  Future<bool> getShowHomeAmounts() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_showAmountsKey) ?? true;
+  }
+
+  Future<void> setShowHomeAmounts(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_showAmountsKey, value);
   }
 
   // 统计

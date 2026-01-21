@@ -242,15 +242,24 @@ class _EventBookFormState extends State<_EventBookForm> {
       labelText: label,
       hintText: hint,
       prefixIcon: icon != null ? Icon(icon, color: AppTheme.primaryColor) : null,
+      labelStyle: const TextStyle(
+        color: AppTheme.textPrimary,
+        fontWeight: FontWeight.w600,
+      ),
+      floatingLabelStyle: const TextStyle(
+        color: AppTheme.primaryColor,
+        fontWeight: FontWeight.w600,
+      ),
+      hintStyle: const TextStyle(color: AppTheme.textSecondary),
       filled: true,
-      fillColor: Colors.grey[50],
+      fillColor: Colors.white,
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: Colors.grey[300]!),
+        borderSide: BorderSide(color: AppTheme.textSecondary.withOpacity(0.35)),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: Colors.grey[300]!),
+        borderSide: BorderSide(color: AppTheme.textSecondary.withOpacity(0.35)),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
@@ -311,6 +320,7 @@ class _EventBookFormState extends State<_EventBookForm> {
                 // Name field
                 TextFormField(
                   controller: _nameController,
+                  style: const TextStyle(color: AppTheme.textPrimary),
                   decoration: _buildInputDecoration(
                     '活动名称',
                     hint: '例如：我的婚礼、孩子满月',
@@ -328,6 +338,7 @@ class _EventBookFormState extends State<_EventBookForm> {
                 // Type field
                 TextFormField(
                   controller: _typeController,
+                  style: const TextStyle(color: AppTheme.textPrimary),
                   decoration: _buildInputDecoration(
                     '类型',
                     hint: '酒席、宴会...',
@@ -348,9 +359,9 @@ class _EventBookFormState extends State<_EventBookForm> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                     decoration: BoxDecoration(
-                      color: Colors.grey[50],
+                      color: Colors.white,
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.grey[300]!),
+                      border: Border.all(color: AppTheme.textSecondary.withOpacity(0.35)),
                     ),
                     child: Row(
                       children: [
@@ -388,6 +399,7 @@ class _EventBookFormState extends State<_EventBookForm> {
                 // Note field
                 TextFormField(
                   controller: _noteController,
+                  style: const TextStyle(color: AppTheme.textPrimary),
                   decoration: _buildInputDecoration(
                     '备注 (可选)',
                     icon: Icons.notes,
