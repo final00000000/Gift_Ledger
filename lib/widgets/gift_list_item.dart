@@ -4,6 +4,7 @@ import '../models/gift.dart';
 import '../models/guest.dart';
 import '../theme/app_theme.dart';
 import '../utils/lunar_utils.dart';
+import 'privacy_aware_text.dart';
 
 class GiftListItem extends StatelessWidget {
   final Gift gift;
@@ -151,7 +152,7 @@ class GiftListItem extends StatelessWidget {
                     ),
                   ),
                   // 金额
-                  Text(
+                  PrivacyAwareText(
                     '${gift.isReceived ? "+" : "-"}¥${gift.amount.toStringAsFixed(0)}',
                     style: Theme.of(context).textTheme.titleLarge?.copyWith(
                       color: gift.isReceived

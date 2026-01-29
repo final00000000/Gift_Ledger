@@ -7,8 +7,10 @@ import '../services/storage_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/gift_list_item.dart';
 import '../widgets/empty_state.dart';
-import '../widgets/balance_card.dart';
 import '../utils/lunar_utils.dart';
+import '../services/security_service.dart';
+import '../widgets/pin_code_dialog.dart';
+import '../widgets/privacy_aware_text.dart';
 import 'add_record_screen.dart';
 import 'batch_add_screen.dart';
 
@@ -23,6 +25,16 @@ class EventBookDetailScreen extends StatefulWidget {
 
 class _EventBookDetailScreenState extends State<EventBookDetailScreen> {
   final StorageService _db = StorageService();
+  final SecurityService _securityService = SecurityService();
+
+  /// 验证安全锁，返回是否通过验证
+  Future<bool> _verifySecurityLock() async {
+    if (!_securityService.isUnlocked.value) {
+      return await PinCodeDialog.show(context);
+    }
+    return true;
+  }
+
   List<Gift> _gifts = [];
   Map<int, Guest> _guestMap = {};
   double _totalReceived = 0;
@@ -32,7 +44,22 @@ class _EventBookDetailScreenState extends State<EventBookDetailScreen> {
   @override
   void initState() {
     super.initState();
+    // 监听 StorageService 变化，自动刷新数据
+    _db.addListener(_onDataChanged);
     _loadData();
+  }
+
+  /// StorageService 数据变化时的回调
+  void _onDataChanged() {
+    if (mounted) {
+      _loadData();
+    }
+  }
+
+  @override
+  void dispose() {
+    _db.removeListener(_onDataChanged);
+    super.dispose();
   }
 
   Future<void> _loadData() async {
@@ -247,7 +274,10 @@ class _EventBookDetailScreenState extends State<EventBookDetailScreen> {
                             return GiftListItem(
                               gift: gift,
                               guest: _guestMap[gift.guestId],
-                              onTap: () => _showGiftDetail(gift, _guestMap[gift.guestId]),
+                              onTap: () async {
+                                if (!await _verifySecurityLock()) return;
+                                _showGiftDetail(gift, _guestMap[gift.guestId]);
+                              },
                             );
                           },
                         ),
@@ -265,7 +295,7 @@ class _EventBookDetailScreenState extends State<EventBookDetailScreen> {
   Widget _buildStatItem(String label, double amount, {required bool isReceived}) {
     return Column(
       children: [
-        Text(
+        PrivacyAwareText(
           amount.toStringAsFixed(0),
           style: TextStyle(
             fontSize: 20,
@@ -368,6 +398,9 @@ class _EventBookDetailScreenState extends State<EventBookDetailScreen> {
                 Expanded(
                   child: OutlinedButton.icon(
                     onPressed: () async {
+                      if (!await _verifySecurityLock()) return;
+                      if (!mounted) return;
+
                       Navigator.pop(context);
                       final result = await Navigator.push(
                         context,
@@ -385,7 +418,10 @@ class _EventBookDetailScreenState extends State<EventBookDetailScreen> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: FilledButton.icon(
-                    onPressed: () {
+                    onPressed: () async {
+                      if (!await _verifySecurityLock()) return;
+                      if (!mounted) return;
+
                       Navigator.pop(context);
                       _confirmDelete(gift, guestName);
                     },

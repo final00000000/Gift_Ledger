@@ -24,10 +24,12 @@ class _TemplateSettingsScreenState extends State<TemplateSettingsScreen> {
 
   Future<void> _loadTemplates() async {
     final templates = await _templateService.getTemplates();
-    setState(() {
-      _templates = templates;
-      _isLoading = false;
-    });
+    if (mounted) {
+      setState(() {
+        _templates = templates;
+        _isLoading = false;
+      });
+    }
   }
 
   Future<void> _addTemplate() async {

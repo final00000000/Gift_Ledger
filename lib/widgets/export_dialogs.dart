@@ -1,10 +1,7 @@
-import 'dart:io';
 import 'package:file_picker/file_picker.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../services/export_service.dart';
 import '../theme/app_theme.dart';
-import 'package:permission_handler/permission_handler.dart';
 
 class ExportDialogs {
   static final ExportService _exportService = ExportService();
@@ -164,35 +161,6 @@ class ExportDialogs {
   static Future<void> _performExport(
       BuildContext context, String type, Future<String?> Function() exportFunc) async {
     
-    // Android: 先检查并申请存储权限
-    if (!kIsWeb && Platform.isAndroid) {
-      final storageStatus = await Permission.storage.status;
-      
-      if (storageStatus.isDenied) {
-        // 首次或之前拒绝过，再次请求
-        final result = await Permission.storage.request();
-        if (!result.isGranted) {
-          // 用户拒绝了权限，提示并退出
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('需要存储权限才能导出文件')),
-          );
-          return;
-        }
-      } else if (storageStatus.isPermanentlyDenied) {
-        // 永久拒绝，引导去设置
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('存储权限被禁用，请在设置中开启'),
-            action: SnackBarAction(
-              label: '去设置',
-              onPressed: () => openAppSettings(),
-            ),
-          ),
-        );
-        return;
-      }
-    }
-
     // 显示加载动画
     _showLoading(context, '正在导出 $type...');
     
@@ -209,18 +177,14 @@ class ExportDialogs {
       dismissLoading();
 
       if (path != null && context.mounted) {
-        if (!kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
-           ScaffoldMessenger.of(context).showSnackBar(
-             SnackBar(content: Text('$type 已保存到: $path')),
-           );
-        } else if (Platform.isAndroid && path.contains('Download')) {
-           ScaffoldMessenger.of(context).showSnackBar(
-             SnackBar(content: Text('已保存到下载文件夹')),
-           );
-        } else {
-           // Mobile: Share
-           await _exportService.shareFile(path);
-        }
+        // 如果返回值是提示信息（非路径），直接显示
+        final message = path.startsWith('/') || path.startsWith('\\') || path.contains(':') 
+            ? '文件已保存: $path' 
+            : path;
+            
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(message)),
+        );
       }
     } catch (e) {
       dismissLoading();

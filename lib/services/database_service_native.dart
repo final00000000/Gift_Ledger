@@ -272,28 +272,25 @@ class NativeDatabaseService {
   // 统计
   Future<double> getTotalReceived({bool includeEventBooks = true}) async {
     final db = await database;
-    final filter = includeEventBooks ? '' : ' AND eventBookId IS NULL';
-    final result = await db.rawQuery(
-      'SELECT SUM(amount) as total FROM gifts WHERE isReceived = 1$filter',
-    );
+    final result = includeEventBooks
+        ? await db.rawQuery('SELECT SUM(amount) as total FROM gifts WHERE isReceived = 1')
+        : await db.rawQuery('SELECT SUM(amount) as total FROM gifts WHERE isReceived = 1 AND eventBookId IS NULL');
     return (result.first['total'] as num?)?.toDouble() ?? 0.0;
   }
 
   Future<double> getTotalSent({bool includeEventBooks = true}) async {
     final db = await database;
-    final filter = includeEventBooks ? '' : ' AND eventBookId IS NULL';
-    final result = await db.rawQuery(
-      'SELECT SUM(amount) as total FROM gifts WHERE isReceived = 0$filter',
-    );
+    final result = includeEventBooks
+        ? await db.rawQuery('SELECT SUM(amount) as total FROM gifts WHERE isReceived = 0')
+        : await db.rawQuery('SELECT SUM(amount) as total FROM gifts WHERE isReceived = 0 AND eventBookId IS NULL');
     return (result.first['total'] as num?)?.toDouble() ?? 0.0;
   }
 
   Future<Map<int, double>> getGuestReceivedTotals({bool includeEventBooks = true}) async {
     final db = await database;
-    final filter = includeEventBooks ? '' : ' AND eventBookId IS NULL';
-    final result = await db.rawQuery(
-      'SELECT guestId, SUM(amount) as total FROM gifts WHERE isReceived = 1$filter GROUP BY guestId',
-    );
+    final result = includeEventBooks
+        ? await db.rawQuery('SELECT guestId, SUM(amount) as total FROM gifts WHERE isReceived = 1 GROUP BY guestId')
+        : await db.rawQuery('SELECT guestId, SUM(amount) as total FROM gifts WHERE isReceived = 1 AND eventBookId IS NULL GROUP BY guestId');
     return {
       for (var row in result)
         row['guestId'] as int: (row['total'] as num).toDouble()
@@ -302,10 +299,9 @@ class NativeDatabaseService {
 
   Future<Map<int, double>> getGuestSentTotals({bool includeEventBooks = true}) async {
     final db = await database;
-    final filter = includeEventBooks ? '' : ' AND eventBookId IS NULL';
-    final result = await db.rawQuery(
-      'SELECT guestId, SUM(amount) as total FROM gifts WHERE isReceived = 0$filter GROUP BY guestId',
-    );
+    final result = includeEventBooks
+        ? await db.rawQuery('SELECT guestId, SUM(amount) as total FROM gifts WHERE isReceived = 0 GROUP BY guestId')
+        : await db.rawQuery('SELECT guestId, SUM(amount) as total FROM gifts WHERE isReceived = 0 AND eventBookId IS NULL GROUP BY guestId');
     return {
       for (var row in result)
         row['guestId'] as int: (row['total'] as num).toDouble()
@@ -348,24 +344,20 @@ class NativeDatabaseService {
   /// 获取未还清单：收礼且未还的记录
   Future<List<Gift>> getUnreturnedGifts({bool includeEventBooks = true}) async {
     final db = await database;
-    final filter = includeEventBooks ? '' : ' AND eventBookId IS NULL';
-    final maps = await db.query(
-      'gifts',
-      where: 'isReceived = 1 AND isReturned = 0$filter',
-      orderBy: 'date DESC',
-    );
+    final where = includeEventBooks
+        ? 'isReceived = 1 AND isReturned = 0'
+        : 'isReceived = 1 AND isReturned = 0 AND eventBookId IS NULL';
+    final maps = await db.query('gifts', where: where, orderBy: 'date DESC');
     return maps.map((map) => Gift.fromMap(map)).toList();
   }
 
   /// 获取待收清单：送礼且未收的记录
   Future<List<Gift>> getPendingReceipts({bool includeEventBooks = true}) async {
     final db = await database;
-    final filter = includeEventBooks ? '' : ' AND eventBookId IS NULL';
-    final maps = await db.query(
-      'gifts',
-      where: 'isReceived = 0 AND isReturned = 0$filter',
-      orderBy: 'date DESC',
-    );
+    final where = includeEventBooks
+        ? 'isReceived = 0 AND isReturned = 0'
+        : 'isReceived = 0 AND isReturned = 0 AND eventBookId IS NULL';
+    final maps = await db.query('gifts', where: where, orderBy: 'date DESC');
     return maps.map((map) => Gift.fromMap(map)).toList();
   }
 
@@ -404,10 +396,9 @@ class NativeDatabaseService {
   /// 获取待处理记录数量
   Future<int> getPendingCount({bool includeEventBooks = true}) async {
     final db = await database;
-    final filter = includeEventBooks ? '' : ' AND eventBookId IS NULL';
-    final result = await db.rawQuery(
-      'SELECT COUNT(*) as count FROM gifts WHERE isReturned = 0$filter',
-    );
+    final result = includeEventBooks
+        ? await db.rawQuery('SELECT COUNT(*) as count FROM gifts WHERE isReturned = 0')
+        : await db.rawQuery('SELECT COUNT(*) as count FROM gifts WHERE isReturned = 0 AND eventBookId IS NULL');
     return (result.first['count'] as int?) ?? 0;
   }
 }

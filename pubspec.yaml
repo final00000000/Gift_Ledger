@@ -1,7 +1,7 @@
 name: gift_ledger
 description: "份子钱记账 - 礼金收支追踪与管理"
 publish_to: 'none'
-version: 1.2.0+3
+version: 1.2.5+5
 
 environment:
   sdk: ^3.2.0
@@ -10,6 +10,7 @@ dependencies:
   flutter:
     sdk: flutter
   cupertino_icons: ^1.0.8
+  provider: ^6.1.1              # 状态管理
   sqflite: ^2.3.0
   sqflite_common_ffi: ^2.3.0  # 桌面端数据库支持
   sqlite3_flutter_libs: ^0.5.0 # 包含 sqlite3.dll
@@ -26,6 +27,8 @@ dependencies:
   lunar: ^1.7.8
   flutter_local_notifications: ^18.0.1  # 本地推送
   timezone: ^0.10.0             # 时区支持
+  flutter_secure_storage: ^10.0.0
+  crypto: ^3.0.7
 
 dev_dependencies:
   flutter_test:

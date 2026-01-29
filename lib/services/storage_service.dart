@@ -1,4 +1,5 @@
 // 条件导入 - Web平台使用 database_service_web.dart
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'database_service_native.dart' if (dart.library.js_interop) 'database_service_web.dart';
 import '../models/event_book.dart';
@@ -6,7 +7,8 @@ import '../models/gift.dart';
 import '../models/guest.dart';
 
 /// 统一存储服务 - 跨平台支持 (Use SQLite for all platforms)
-class StorageService {
+/// 继承 ChangeNotifier 以支持 Provider 状态管理
+class StorageService extends ChangeNotifier {
   static final StorageService _instance = StorageService._internal();
   factory StorageService() => _instance;
   StorageService._internal();
@@ -15,9 +17,16 @@ class StorageService {
   static const String _eventBooksEnabledKey = 'event_books_enabled';
   static const String _showAmountsKey = 'show_home_amounts';
 
+  /// 通知数据变更
+  void _notifyDataChanged() {
+    notifyListeners();
+  }
+
   // Guest CRUD
-  Future<int> insertGuest(Guest guest) {
-    return nativeDb.insertGuest(guest);
+  Future<int> insertGuest(Guest guest) async {
+    final result = await nativeDb.insertGuest(guest);
+    _notifyDataChanged();
+    return result;
   }
 
   Future<List<Guest>> getAllGuests() {
@@ -32,16 +41,22 @@ class StorageService {
     return nativeDb.getGuestByName(name);
   }
 
-  Future<int> updateGuest(Guest guest) {
-    return nativeDb.updateGuest(guest);
+  Future<int> updateGuest(Guest guest) async {
+    final result = await nativeDb.updateGuest(guest);
+    _notifyDataChanged();
+    return result;
   }
 
-  Future<int> deleteGuest(int id) {
-    return nativeDb.deleteGuest(id);
+  Future<int> deleteGuest(int id) async {
+    final result = await nativeDb.deleteGuest(id);
+    _notifyDataChanged();
+    return result;
   }
 
-  Future<int> insertEventBook(EventBook eventBook) {
-    return nativeDb.insertEventBook(eventBook);
+  Future<int> insertEventBook(EventBook eventBook) async {
+    final result = await nativeDb.insertEventBook(eventBook);
+    _notifyDataChanged();
+    return result;
   }
 
   Future<List<EventBook>> getAllEventBooks() {
@@ -52,21 +67,28 @@ class StorageService {
     return nativeDb.getEventBookById(id);
   }
 
-  Future<int> updateEventBook(EventBook eventBook) {
-    return nativeDb.updateEventBook(eventBook);
+  Future<int> updateEventBook(EventBook eventBook) async {
+    final result = await nativeDb.updateEventBook(eventBook);
+    _notifyDataChanged();
+    return result;
   }
 
-  Future<int> deleteEventBook(int id) {
-    return nativeDb.deleteEventBook(id);
+  Future<int> deleteEventBook(int id) async {
+    final result = await nativeDb.deleteEventBook(id);
+    _notifyDataChanged();
+    return result;
   }
 
   // Gift CRUD
-  Future<int> insertGift(Gift gift) {
-    return nativeDb.insertGift(gift);
+  Future<int> insertGift(Gift gift) async {
+    final result = await nativeDb.insertGift(gift);
+    _notifyDataChanged();
+    return result;
   }
 
-  Future<void> insertGiftsBatch(List<Gift> gifts) {
-    return nativeDb.insertGiftsBatch(gifts);
+  Future<void> insertGiftsBatch(List<Gift> gifts) async {
+    await nativeDb.insertGiftsBatch(gifts);
+    _notifyDataChanged();
   }
 
   Future<List<Gift>> getAllGifts() {
@@ -85,12 +107,16 @@ class StorageService {
     return nativeDb.getRecentGifts(limit: limit);
   }
 
-  Future<int> updateGift(Gift gift) {
-    return nativeDb.updateGift(gift);
+  Future<int> updateGift(Gift gift) async {
+    final result = await nativeDb.updateGift(gift);
+    _notifyDataChanged();
+    return result;
   }
 
-  Future<int> deleteGift(int id) {
-    return nativeDb.deleteGift(id);
+  Future<int> deleteGift(int id) async {
+    final result = await nativeDb.deleteGift(id);
+    _notifyDataChanged();
+    return result;
   }
 
   Future<double> getEventBookReceivedTotal(int eventBookId) {
@@ -113,6 +139,7 @@ class StorageService {
   Future<void> setStatsIncludeEventBooks(bool value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_statsIncludeEventBooksKey, value);
+    _notifyDataChanged();
   }
 
   Future<bool> getEventBooksEnabled() async {
@@ -123,6 +150,7 @@ class StorageService {
   Future<void> setEventBooksEnabled(bool value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_eventBooksEnabledKey, value);
+    _notifyDataChanged();
   }
 
   Future<bool> getShowHomeAmounts() async {
@@ -133,6 +161,7 @@ class StorageService {
   Future<void> setShowHomeAmounts(bool value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_showAmountsKey, value);
+    _notifyDataChanged();
   }
 
   // 统计
@@ -154,7 +183,8 @@ class StorageService {
 
   // Transactional or Combined operations
   Future<void> saveGiftWithGuest(Gift gift, Guest guest) async {
-    return nativeDb.saveGiftWithGuest(gift, guest);
+    await nativeDb.saveGiftWithGuest(gift, guest);
+    _notifyDataChanged();
   }
 
   // 还礼追踪方法
@@ -166,16 +196,21 @@ class StorageService {
     return nativeDb.getPendingReceipts(includeEventBooks: includeEventBooks);
   }
 
-  Future<int> updateReturnStatus(int giftId, {required bool isReturned, int? relatedRecordId}) {
-    return nativeDb.updateReturnStatus(giftId, isReturned: isReturned, relatedRecordId: relatedRecordId);
+  Future<int> updateReturnStatus(int giftId, {required bool isReturned, int? relatedRecordId}) async {
+    final result = await nativeDb.updateReturnStatus(giftId, isReturned: isReturned, relatedRecordId: relatedRecordId);
+    _notifyDataChanged();
+    return result;
   }
 
-  Future<int> incrementRemindedCount(int giftId) {
-    return nativeDb.incrementRemindedCount(giftId);
+  Future<int> incrementRemindedCount(int giftId) async {
+    final result = await nativeDb.incrementRemindedCount(giftId);
+    _notifyDataChanged();
+    return result;
   }
 
-  Future<void> linkGiftRecords(int giftId1, int giftId2) {
-    return nativeDb.linkGiftRecords(giftId1, giftId2);
+  Future<void> linkGiftRecords(int giftId1, int giftId2) async {
+    await nativeDb.linkGiftRecords(giftId1, giftId2);
+    _notifyDataChanged();
   }
 
   Future<int> getPendingCount({bool includeEventBooks = true}) {

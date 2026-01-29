@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../models/gift.dart';
+import 'privacy_aware_text.dart';
 
 /// 分类数据模型
 class CategoryData {
@@ -109,13 +110,9 @@ class _SymmetryBarChartState extends State<SymmetryBarChart> {
       return const SizedBox.shrink();
     }
 
-    // 计算最大值用于比例
-    double maxReceived = 0;
-    double maxGiven = 0;
-    for (var d in data) {
-      if (d.received > maxReceived) maxReceived = d.received;
-      if (d.given > maxGiven) maxGiven = d.given;
-    }
+    // 计算最大值用于比例（使用 fold 简化）
+    final maxReceived = data.fold<double>(0, (max, d) => d.received > max ? d.received : max);
+    final maxGiven = data.fold<double>(0, (max, d) => d.given > max ? d.given : max);
     final maxValue = maxReceived > maxGiven ? maxReceived : maxGiven;
     final safeMax = maxValue == 0 ? 1.0 : maxValue;
 
@@ -599,7 +596,7 @@ class BalanceBarChart extends StatelessWidget {
     return Column(
       children: [
         // 金额显示
-        Text(
+        PrivacyAwareText(
           amount == 0 ? '0' : '¥${amount.toStringAsFixed(0)}',
           style: TextStyle(
             color: color,
@@ -759,7 +756,7 @@ class StatListItem extends StatelessWidget {
                         letterSpacing: -0.3,
                       ),
                     ),
-                    Text(
+                    PrivacyAwareText(
                       '¥${amount.toStringAsFixed(0)}',
                       style: TextStyle(
                         fontWeight: FontWeight.w900,

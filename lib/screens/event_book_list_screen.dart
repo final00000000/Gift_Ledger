@@ -6,7 +6,6 @@ import '../theme/app_theme.dart';
 import '../utils/lunar_utils.dart';
 import '../widgets/event_book_card.dart';
 import '../widgets/empty_state.dart';
-import '../widgets/skeleton.dart';
 import '../widgets/lunar_calendar_picker.dart';
 import 'event_book_detail_screen.dart';
 
@@ -26,7 +25,22 @@ class _EventBookListScreenState extends State<EventBookListScreen> {
   @override
   void initState() {
     super.initState();
+    // 监听 StorageService 变化，自动刷新数据
+    _db.addListener(_onDataChanged);
     _loadData();
+  }
+
+  /// StorageService 数据变化时的回调
+  void _onDataChanged() {
+    if (mounted) {
+      _loadData();
+    }
+  }
+
+  @override
+  void dispose() {
+    _db.removeListener(_onDataChanged);
+    super.dispose();
   }
 
   Future<void> _loadData() async {

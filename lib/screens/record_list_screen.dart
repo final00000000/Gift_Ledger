@@ -6,6 +6,9 @@ import '../services/storage_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/lunar_utils.dart';
 import 'add_record_screen.dart';
+import '../services/security_service.dart';
+import '../widgets/pin_code_dialog.dart';
+import '../widgets/privacy_aware_text.dart';
 
 class RecordListScreen extends StatefulWidget {
   final bool? isReceived; // null = 显示全部记录
@@ -22,7 +25,16 @@ class RecordListScreen extends StatefulWidget {
 class _RecordListScreenState extends State<RecordListScreen>
     with SingleTickerProviderStateMixin {
   final StorageService _db = StorageService();
+  final SecurityService _securityService = SecurityService();
   final TextEditingController _searchController = TextEditingController();
+
+  /// 验证安全锁，返回是否通过验证
+  Future<bool> _verifySecurityLock() async {
+    if (!_securityService.isUnlocked.value) {
+      return await PinCodeDialog.show(context);
+    }
+    return true;
+  }
 
   List<Gift> _allGifts = [];
   List<Gift> _filteredGifts = [];
@@ -40,12 +52,22 @@ class _RecordListScreenState extends State<RecordListScreen>
       vsync: this,
       duration: const Duration(milliseconds: 800),
     );
+    // 监听 StorageService 变化，自动刷新数据
+    _db.addListener(_onDataChanged);
     _loadData();
     _searchController.addListener(_onSearchChanged);
   }
 
+  /// StorageService 数据变化时的回调
+  void _onDataChanged() {
+    if (mounted) {
+      _loadData();
+    }
+  }
+
   @override
   void dispose() {
+    _db.removeListener(_onDataChanged);
     _animationController.dispose();
     _searchController.dispose();
     super.dispose();
@@ -107,11 +129,8 @@ class _RecordListScreenState extends State<RecordListScreen>
       return true;
     }).toList();
 
-    // 计算统计数据
-    double total = 0;
-    for (var gift in filtered) {
-      total += gift.amount;
-    }
+    // 计算统计数据（使用 fold 简化）
+    final total = filtered.fold<double>(0, (sum, gift) => sum + gift.amount);
 
     setState(() {
       _filteredGifts = filtered;
@@ -172,7 +191,7 @@ class _RecordListScreenState extends State<RecordListScreen>
                 fontSize: 13,
               ),
             ),
-            Text(
+            PrivacyAwareText(
               '¥${_filteredTotalAmount.toStringAsFixed(0)}',
               style: TextStyle(
                 color: AppTheme.textPrimary,
@@ -489,7 +508,10 @@ class _RecordListScreenState extends State<RecordListScreen>
         color: Colors.transparent,
         child: InkWell(
           borderRadius: BorderRadius.circular(20),
-          onTap: () => _showGiftDetail(gift, guest),
+          onTap: () async {
+            if (!await _verifySecurityLock()) return;
+            _showGiftDetail(gift, guest);
+          },
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Row(
@@ -575,7 +597,7 @@ class _RecordListScreenState extends State<RecordListScreen>
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    Text(
+                    PrivacyAwareText(
                       '${gift.isReceived ? "+" : "-"}¥${gift.amount.toStringAsFixed(0)}',
                       style: TextStyle(
                         fontSize: 19,

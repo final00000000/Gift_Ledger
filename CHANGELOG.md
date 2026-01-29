@@ -11,6 +11,29 @@
 - 深色模式支持
 - 数据云同步
 
+## [1.2.5] - 2026-01-29
+
+### 新增
+- 🔐 **安全功能**：PIN 码锁定保护敏感数据
+- 👁️ **隐私保护**：金额隐藏功能，保护隐私
+- 📱 **启动页优化**：全新启动页设计（Android）
+
+### 优化
+- ⚡ **状态管理重构**：使用 Provider + ChangeNotifier 实现响应式数据流
+- 📦 **APK 大小优化**：启用代码压缩和混淆，预期减小 30-40%
+- 🧹 **代码清理**：删除 6 个未使用的文件，提升代码库健康度
+- 🔄 **自动刷新**：数据变化时自动更新 UI，无需手动刷新
+
+### 修复
+- 🐛 修复 SecurityService.isUnlocked 类型错误
+- 🐛 修复 template_settings_screen 缺少 mounted 检查
+- 🐛 修复 event_book_list_screen 和 guest_list_screen 监听器遗漏
+
+### 文档
+- 📚 新增 BUILD.md 构建指南（Android/Windows/Web/iOS）
+- 📝 完善 README 目录导航
+- 📋 更新 Release 说明
+
 ## [1.2.0] - 2026-01-15
 
 ### 新增

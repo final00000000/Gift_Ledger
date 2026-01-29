@@ -188,10 +188,9 @@ class _LunarCalendarPickerState extends State<LunarCalendarPicker> {
   @override
   Widget build(BuildContext context) {
     final days = _getDaysInMonth();
-    final lunarInfo = _getLunarInfo(_selectedDate);
     final selectedSolar = Solar.fromDate(_selectedDate);
     final selectedLunar = Lunar.fromSolar(selectedSolar);
-    
+
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
       child: Container(

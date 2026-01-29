@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#F2F3F5"
+    android:clipChildren="false"
+    android:clipToPadding="false">
+
+    <LinearLayout
+        android:id="@+id/splashContent"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_centerInParent="true"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:alpha="0"
+        android:scaleX="0.8"
+        android:scaleY="0.8"
+        android:clipChildren="false"
+        android:clipToPadding="false">
+
+        <!-- Logo 圆形背景 + 图标 + 双层阴影效果 -->
+        <FrameLayout
+            android:layout_width="160dp"
+            android:layout_height="160dp"
+            android:clipChildren="false"
+            android:clipToPadding="false">
+
+            <!-- 外层阴影 - 更大更淡 -->
+            <View
+                android:layout_width="130dp"
+                android:layout_height="130dp"
+                android:layout_gravity="center"
+                android:layout_marginTop="20dp"
+                android:background="@drawable/splash_logo_shadow_outer" />
+
+            <!-- 内层阴影 - 更小更深 -->
+            <View
+                android:layout_width="115dp"
+                android:layout_height="115dp"
+                android:layout_gravity="center"
+                android:layout_marginTop="12dp"
+                android:background="@drawable/splash_logo_shadow" />
+
+            <!-- Logo 主体 -->
+            <View
+                android:layout_width="100dp"
+                android:layout_height="100dp"
+                android:layout_gravity="center"
+                android:background="@drawable/splash_logo_bg"
+                android:elevation="12dp" />
+
+            <ImageView
+                android:layout_width="56dp"
+                android:layout_height="56dp"
+                android:layout_gravity="center"
+                android:src="@drawable/ic_gift"
+                android:elevation="13dp"
+                android:contentDescription="Logo" />
+        </FrameLayout>
+
+        <!-- 应用名称 -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="随礼记"
+            android:textSize="34sp"
+            android:textStyle="bold"
+            android:textColor="#C62828"
+            android:letterSpacing="0.12" />
+
+        <!-- Slogan -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:text="人情往来 · 心意相传"
+            android:textSize="14sp"
+            android:textColor="#757575"
+            android:letterSpacing="0.08" />
+
+    </LinearLayout>
+
+</RelativeLayout>

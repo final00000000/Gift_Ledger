@@ -6,6 +6,8 @@ import '../widgets/export_dialogs.dart';
 import '../services/template_service.dart';
 import '../services/notification_service.dart';
 import '../services/storage_service.dart';
+import '../services/security_service.dart';
+import '../widgets/pin_code_dialog.dart';
 import 'template_settings_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -21,15 +23,31 @@ class SettingsScreenState extends State<SettingsScreen> {
   bool _notificationsEnabled = false;
   bool _statsIncludeEventBooks = true;
   bool _eventBooksEnabled = true;
-  bool _showHomeAmounts = true;
+  String _securityMode = SecurityService.modeNone;
   final TemplateService _templateService = TemplateService();
   final NotificationService _notificationService = NotificationService();
   final StorageService _db = StorageService();
+  final SecurityService _securityService = SecurityService();
 
   @override
   void initState() {
     super.initState();
+    // 监听 StorageService 变化，自动刷新设置
+    _db.addListener(_onDataChanged);
     _loadSettings();
+  }
+
+  /// StorageService 数据变化时的回调
+  void _onDataChanged() {
+    if (mounted) {
+      _loadSettings();
+    }
+  }
+
+  @override
+  void dispose() {
+    _db.removeListener(_onDataChanged);
+    super.dispose();
   }
 
   Future<void> _loadSettings() async {
@@ -40,9 +58,9 @@ class SettingsScreenState extends State<SettingsScreen> {
       _notificationService.isEnabled(),
       _db.getStatsIncludeEventBooks(),
       _db.getEventBooksEnabled(),
-      _db.getShowHomeAmounts(),
+      _securityService.getSecurityMode(),
     ]);
-    
+
     final prefs = results[0] as SharedPreferences;
     setState(() {
       _defaultIsReceived = prefs.getBool('default_is_received') ?? true;
@@ -50,7 +68,7 @@ class SettingsScreenState extends State<SettingsScreen> {
       _notificationsEnabled = results[2] as bool;
       _statsIncludeEventBooks = results[3] as bool;
       _eventBooksEnabled = results[4] as bool;
-      _showHomeAmounts = results[5] as bool;
+      _securityMode = results[5] as String;
     });
   }
 
@@ -63,6 +81,71 @@ class SettingsScreenState extends State<SettingsScreen> {
     if (mounted) {
       CustomToast.show(context, '设置已保存');
     }
+  }
+
+  Future<void> _handleSecurityModeChange(String mode) async {
+    if (mode == _securityMode) return;
+
+    // 关键修复：如果当前已经有锁（不是无锁模式），修改设置前必须验证密码
+    // 无论是关闭锁、还是切换模式，都需要验证
+    if (_securityMode != SecurityService.modeNone) {
+      if (!mounted) return;
+      // 弹出验证框
+      final verified = await PinCodeDialog.show(context);
+      if (!verified) return; // 验证失败，终止修改
+    }
+
+    // 如果要开启安全模式，必须先检查是否有密码
+    if (mode != SecurityService.modeNone) {
+      final hasPin = await _securityService.hasPin();
+      if (!hasPin) {
+        if (!mounted) return;
+        final pinSet = await showModalBottomSheet<bool>(
+          context: context,
+          isScrollControlled: true,
+          backgroundColor: Colors.transparent,
+          builder: (context) => PinCodeDialog(
+            isSettingPin: true,
+            onPinSet: (pin) => _securityService.setPin(pin),
+          ),
+        );
+        
+        if (pinSet != true) return; // 用户取消设置密码
+      } else {
+        // 如果已经有密码，且是从无锁切到有锁，这里不需要额外验证
+        // (因为上面已经验证了从有锁切过来的情况；如果是无锁切有锁，只要有密码就行，或者强制验证一次也无妨，保持逻辑简单)
+      }
+    }
+
+    await _securityService.setSecurityMode(mode);
+    setState(() => _securityMode = mode);
+    
+    // 隐形模式下，自动关闭"显示首页金额"
+    if (mode == SecurityService.modeInvisible) {
+       // 更新数据库设置（逻辑上已经由SecurityService控制）
+       await _db.setShowHomeAmounts(false);
+    }
+  }
+
+  Future<void> _changePassword() async {
+    // 先验证旧密码
+    final verified = await PinCodeDialog.show(context);
+    if (!verified) return;
+
+    if (!mounted) return;
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => PinCodeDialog(
+        isSettingPin: true,
+        title: '设置新密码',
+        onPinSet: (pin) async {
+           await _securityService.setPin(pin);
+           if (mounted) CustomToast.show(context, '密码修改成功');
+        },
+      ),
+    );
   }
 
   /// 公开刷新方法，供控制器调用
@@ -101,6 +184,32 @@ class SettingsScreenState extends State<SettingsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                   // 安全与隐私
+                  _buildSectionCard(
+                    title: '安全与隐私',
+                    children: [
+                      _buildNavigationTile(
+                        icon: Icons.security_rounded,
+                        iconColor: _securityMode == SecurityService.modeNone 
+                            ? Colors.grey 
+                            : (_securityMode == SecurityService.modeInvisible ? AppTheme.primaryColor : Colors.orange),
+                        title: '应用安全锁',
+                        subtitle: _getSecurityModeText(_securityMode),
+                        onTap: () => _showSecurityModePicker(),
+                      ),
+                      if (_securityMode != SecurityService.modeNone) ...[
+                        const Divider(height: 1, indent: 52),
+                        _buildNavigationTile(
+                          icon: Icons.password_rounded,
+                          iconColor: AppTheme.textPrimary,
+                          title: '修改安全密码',
+                          subtitle: '重置您的6位PIN码',
+                          onTap: _changePassword,
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 16),
                   // 记账与统计
                   _buildSectionCard(
                     title: '记账与统计',
@@ -123,19 +232,6 @@ class SettingsScreenState extends State<SettingsScreen> {
                         onChanged: (v) async {
                           await _db.setStatsIncludeEventBooks(v);
                           setState(() => _statsIncludeEventBooks = v);
-                          if (mounted) CustomToast.show(context, '设置已保存');
-                        },
-                      ),
-                      const Divider(height: 1, indent: 52),
-                      _buildSwitchTile(
-                        icon: Icons.visibility_rounded,
-                        iconColor: Colors.blueGrey,
-                        title: '显示首页金额',
-                        subtitle: '关闭后首页金额显示为***',
-                        value: _showHomeAmounts,
-                        onChanged: (v) async {
-                          await _db.setShowHomeAmounts(v);
-                          setState(() => _showHomeAmounts = v);
                           if (mounted) CustomToast.show(context, '设置已保存');
                         },
                       ),
@@ -250,6 +346,104 @@ class SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  String _getSecurityModeText(String mode) {
+    switch (mode) {
+      case SecurityService.modeInvisible:
+        return '隐形防护 (推荐): 仅隐藏金额';
+      case SecurityService.modeFortress:
+        return '堡垒模式: 启动时锁定';
+      default:
+        return '已关闭';
+    }
+  }
+
+  void _showSecurityModePicker() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 12),
+            Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2))),
+            const Padding(
+              padding: EdgeInsets.all(24),
+              child: Text('选择安全模式', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+            ),
+            _buildModeOption(
+              mode: SecurityService.modeNone,
+              title: '关闭 (无锁)',
+              subtitle: '进入应用无需密码，金额直接显示',
+              icon: Icons.lock_open_rounded,
+              color: Colors.grey,
+            ),
+            _buildModeOption(
+              mode: SecurityService.modeInvisible,
+              title: '隐形防护 (推荐)',
+              subtitle: '秒开应用。金额默认隐藏，查看详情或编辑时验证',
+              icon: Icons.visibility_off_rounded,
+              color: AppTheme.primaryColor,
+            ),
+            _buildModeOption(
+              mode: SecurityService.modeFortress,
+              title: '堡垒模式',
+              subtitle: '每次打开应用或从后台切回时强制验证',
+              icon: Icons.lock_rounded,
+              color: Colors.orange,
+            ),
+            const SizedBox(height: 32),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildModeOption({
+    required String mode,
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required Color color,
+  }) {
+    final isSelected = _securityMode == mode;
+    return InkWell(
+      onTap: () {
+        Navigator.pop(context);
+        _handleSecurityModeChange(mode);
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+        color: isSelected ? color.withOpacity(0.05) : null,
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: color),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: TextStyle(fontWeight: FontWeight.w700, color: isSelected ? color : AppTheme.textPrimary)),
+                  const SizedBox(height: 4),
+                  Text(subtitle, style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+                ],
+              ),
+            ),
+            if (isSelected) Icon(Icons.check_circle_rounded, color: color),
+          ],
+        ),
       ),
     );
   }

@@ -51,11 +51,22 @@ CONTRIBUTING.md
 tmpclaude-*
 nul
 
-# Brain/artifacts directory
+# AI tools and artifacts
 .gemini/
+.gemini-clipboard/
+.ace-tool/
+.cursor/
+.trellis/
+AGENTS.md
+
+# Build scripts (may contain sensitive info)
+build_release.bat
+*.bat
 
 # Release builds (APKs, etc.)
 releases/
+*.apk
+*.aab
 
 # Build directory
 build/

@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
+import 'privacy_aware_text.dart';
 
 class BalanceCard extends StatelessWidget {
   final double totalReceived;
   final double totalSent;
-  final bool showAmounts;
   final VoidCallback? onReceivedTap;
   final VoidCallback? onSentTap;
 
@@ -12,7 +12,6 @@ class BalanceCard extends StatelessWidget {
     super.key,
     required this.totalReceived,
     required this.totalSent,
-    required this.showAmounts,
     this.onReceivedTap,
     this.onSentTap,
   });
@@ -117,7 +116,7 @@ class BalanceCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 4),
-                Text(
+                PrivacyAwareText(
                   '¥${_formatAmount(amount)}',
                   style: TextStyle(
                     color: AppTheme.textPrimary,
@@ -125,8 +124,6 @@ class BalanceCard extends StatelessWidget {
                     fontWeight: FontWeight.w900,
                     letterSpacing: -0.5,
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),
@@ -137,9 +134,6 @@ class BalanceCard extends StatelessWidget {
   }
 
   String _formatAmount(double amount) {
-    if (!showAmounts) {
-      return '***';
-    }
     if (amount >= 1000000) {
        return '${(amount / 10000).toStringAsFixed(1)}w';
     }

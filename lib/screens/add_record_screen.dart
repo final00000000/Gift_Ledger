@@ -119,8 +119,8 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
 
   void _onFocusChanged() {
     if (!_nameFocusNode.hasFocus) {
-      // 延迟隐藏，以便点击事件能先触?
-      Future.delayed(const Duration(milliseconds: 200), () {
+      // 使用 addPostFrameCallback 替代 Future.delayed，避免竞态条件
+      WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && !_nameFocusNode.hasFocus) {
           _hideOverlay();
         }
@@ -502,156 +502,88 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
 
   /// 检查是否有匹配的未还收礼记录（用于送礼记录）
   Future<void> _checkAndSuggestLink(String guestName, double amount) async {
-    try {
-      // 获取未还收礼记录
-      final unreturnedGifts = await _db.getUnreturnedGifts();
-      final guests = await _db.getAllGuests();
-      
-      // 找到匹配该姓名的联系人
-      final matchedGuest = guests.where((g) => g.name == guestName).toList();
-      if (matchedGuest.isEmpty) return;
-      
-      final guestId = matchedGuest.first.id;
-      
-      // 找到该联系人的未还记录，且事件类型相同
-      final matchedGifts = unreturnedGifts.where((g) => 
-        g.guestId == guestId && 
-        g.eventType == _eventType &&
-        g.relatedRecordId == null
-      ).toList();
-      
-      if (matchedGifts.isEmpty || !mounted) return;
-      
-      final matchedGift = matchedGifts.first;
-      
-      // 弹出关联建议对话框
-      final shouldLink = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: const Row(
-            children: [
-              Icon(Icons.link_rounded, color: AppTheme.primaryColor),
-              SizedBox(width: 12),
-              Text('关联提示'),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('检测到 $guestName 有一笔未还记录：'),
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppTheme.primaryColor.withOpacity(0.05),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.card_giftcard_rounded, color: AppTheme.primaryColor, size: 32),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '${matchedGift.eventType} ¥${matchedGift.amount.toStringAsFixed(0)}',
-                            style: const TextStyle(fontWeight: FontWeight.w700),
-                          ),
-                          Text(
-                            DateFormat('yyyy-MM-dd').format(matchedGift.date),
-                            style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              const Text('是否将这笔送礼关联到该记录，并标记为已还？'),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('不关联'),
-            ),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primaryColor,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              ),
-              child: const Text('关联'),
-            ),
-          ],
-        ),
-      );
-      
-      if (shouldLink == true && matchedGift.id != null) {
-        // 标记原收礼记录为已还
-        await _db.updateReturnStatus(matchedGift.id!, isReturned: true);
-      }
-    } catch (e) {
-      // 忽略关联检测的错误，不影响主流程
-    }
+    await _checkAndSuggestLinkGeneric(
+      guestName: guestName,
+      amount: amount,
+      getPendingGifts: _db.getUnreturnedGifts,
+      recordTypeLabel: '未还',
+      actionLabel: '已还',
+      accentColor: AppTheme.primaryColor,
+      icon: Icons.card_giftcard_rounded,
+    );
   }
 
   /// 检查是否有匹配的待收送礼记录（用于收礼记录）
   Future<void> _checkAndSuggestLinkForReceived(String guestName, double amount) async {
+    await _checkAndSuggestLinkGeneric(
+      guestName: guestName,
+      amount: amount,
+      getPendingGifts: _db.getPendingReceipts,
+      recordTypeLabel: '待收',
+      actionLabel: '已收',
+      accentColor: AppTheme.accentColor,
+      icon: Icons.redeem_rounded,
+    );
+  }
+
+  /// 通用的关联检测方法
+  Future<void> _checkAndSuggestLinkGeneric({
+    required String guestName,
+    required double amount,
+    required Future<List<Gift>> Function() getPendingGifts,
+    required String recordTypeLabel,
+    required String actionLabel,
+    required Color accentColor,
+    required IconData icon,
+  }) async {
     try {
-      // 获取待收送礼记录
-      final pendingReceipts = await _db.getPendingReceipts();
+      final pendingGifts = await getPendingGifts();
       final guests = await _db.getAllGuests();
-      
+
       // 找到匹配该姓名的联系人
       final matchedGuest = guests.where((g) => g.name == guestName).toList();
       if (matchedGuest.isEmpty) return;
-      
+
       final guestId = matchedGuest.first.id;
-      
-      // 找到该联系人的待收记录，且事件类型相同
-      final matchedGifts = pendingReceipts.where((g) => 
-        g.guestId == guestId && 
+
+      // 找到该联系人的待处理记录，且事件类型相同
+      final matchedGifts = pendingGifts.where((g) =>
+        g.guestId == guestId &&
         g.eventType == _eventType &&
         g.relatedRecordId == null
       ).toList();
-      
+
       if (matchedGifts.isEmpty || !mounted) return;
-      
+
       final matchedGift = matchedGifts.first;
-      
+
       // 弹出关联建议对话框
       final shouldLink = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: const Row(
+          title: Row(
             children: [
-              Icon(Icons.link_rounded, color: AppTheme.accentColor),
-              SizedBox(width: 12),
-              Text('关联提示'),
+              Icon(Icons.link_rounded, color: accentColor),
+              const SizedBox(width: 12),
+              const Text('关联提示'),
             ],
           ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('检测到 $guestName 有一笔待收记录：'),
+              Text('检测到 $guestName 有一笔$recordTypeLabel记录：'),
               const SizedBox(height: 12),
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: AppTheme.accentColor.withOpacity(0.05),
+                  color: accentColor.withOpacity(0.05),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Row(
                   children: [
-                    Icon(Icons.redeem_rounded, color: AppTheme.accentColor, size: 32),
+                    Icon(icon, color: accentColor, size: 32),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(
@@ -672,7 +604,7 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
                 ),
               ),
               const SizedBox(height: 16),
-              const Text('是否将这笔收礼关联到该记录，并标记为已收？'),
+              Text('是否将这笔记录关联到该记录，并标记为$actionLabel？'),
             ],
           ),
           actions: [
@@ -683,7 +615,7 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
             ElevatedButton(
               onPressed: () => Navigator.pop(ctx, true),
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.accentColor,
+                backgroundColor: accentColor,
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
               ),
@@ -692,9 +624,8 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
           ],
         ),
       );
-      
+
       if (shouldLink == true && matchedGift.id != null) {
-        // 标记原送礼记录为已收
         await _db.updateReturnStatus(matchedGift.id!, isReturned: true);
       }
     } catch (e) {

@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../models/gift.dart';
 import '../theme/app_theme.dart';
+import 'privacy_aware_text.dart';
 
 import '../models/guest.dart';
 
@@ -56,19 +57,7 @@ class _OrbitMapState extends State<OrbitMap> with SingleTickerProviderStateMixin
 
   @override
   Widget build(BuildContext context) {
-    // 计算总金额
-    double totalAmount = 0;
-    for (var g in widget.gifts) {
-      if (g.isReceived) {
-        totalAmount += g.amount;
-      } else {
-        totalAmount -= g.amount; // 或者是绝对值相加？React代码里是 abs(received + given) 如果 given 是存的负数的话..
-      }
-      // React代码: Math.abs(cat.received + cat.given). 但在我的 CategoryData 中 logic 是分开存正数的
-      // 让我们仔细看 React: map[r.category].given -= r.amount; 所以 given 是负数.
-      // 这里的 gifts 列表里 amount 都是正数，isReceived 区分方向.
-      // 简单起见，这里展示总流动金额 (received + given)
-    }
+    // 计算总流动金额 (received + given)
     double flowAmount = widget.gifts.fold(0, (sum, g) => sum + g.amount);
 
     return SizedBox(
@@ -189,7 +178,7 @@ class _OrbitMapState extends State<OrbitMap> with SingleTickerProviderStateMixin
                 ),
               ),
               const SizedBox(height: 4),
-              Text(
+              PrivacyAwareText(
                 '¥${flowAmount.toStringAsFixed(0)}',
                 style: const TextStyle(
                   color: Colors.white,
@@ -320,7 +309,7 @@ class _OrbitMapState extends State<OrbitMap> with SingleTickerProviderStateMixin
                                     fontWeight: FontWeight.w900,
                                   ),
                                 ),
-                                Text(
+                                PrivacyAwareText(
                                   '¥${gift.amount.toStringAsFixed(0)}',
                                   style: TextStyle(
                                     color: color,

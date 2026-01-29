@@ -27,13 +27,14 @@ class NotificationService {
       return;
     }
 
-    tz_data.initializeTimeZones();
+    // 延迟时区初始化到后台，不阻塞启动
+    Future.microtask(() => tz_data.initializeTimeZones());
 
     const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
     const iosSettings = DarwinInitializationSettings(
-      requestAlertPermission: true,
-      requestBadgePermission: true,
-      requestSoundPermission: true,
+      requestAlertPermission: false,  // 不在启动时请求权限
+      requestBadgePermission: false,
+      requestSoundPermission: false,
     );
 
     const initSettings = InitializationSettings(
@@ -46,10 +47,12 @@ class NotificationService {
       onDidReceiveNotificationResponse: _onNotificationTapped,
     );
 
-    // 检查并调度每月提醒
-    if (await isEnabled()) {
-      await scheduleMonthlyReminder();
-    }
+    // 延迟检查通知状态，不阻塞启动
+    Future.microtask(() async {
+      if (await isEnabled()) {
+        await scheduleMonthlyReminder();
+      }
+    });
   }
 
   /// 处理通知点击

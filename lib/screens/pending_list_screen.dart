@@ -12,6 +12,9 @@ import '../theme/app_theme.dart';
 import '../utils/lunar_utils.dart';
 import '../widgets/custom_toast.dart';
 import '../services/export_service.dart';
+import '../services/security_service.dart';
+import '../widgets/pin_code_dialog.dart';
+import '../widgets/privacy_aware_text.dart';
 import 'add_record_screen.dart';
 
 class PendingListScreen extends StatefulWidget {
@@ -27,6 +30,15 @@ class _PendingListScreenState extends State<PendingListScreen> with SingleTicker
   final _reminderService = ReminderService();
   final _templateService = TemplateService();
   final _exportService = ExportService();
+  final _securityService = SecurityService();
+
+  /// 验证安全锁，返回是否通过验证
+  Future<bool> _verifySecurityLock() async {
+    if (!_securityService.isUnlocked.value) {
+      return await PinCodeDialog.show(context);
+    }
+    return true;
+  }
 
   List<Gift> _unreturnedGifts = [];
   List<Gift> _pendingReceipts = [];
@@ -41,11 +53,21 @@ class _PendingListScreenState extends State<PendingListScreen> with SingleTicker
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    // 监听 StorageService 变化，自动刷新数据
+    _storageService.addListener(_onDataChanged);
     _loadData();
+  }
+
+  /// StorageService 数据变化时的回调
+  void _onDataChanged() {
+    if (mounted) {
+      _loadData();
+    }
   }
 
   @override
   void dispose() {
+    _storageService.removeListener(_onDataChanged);
     _tabController.dispose();
     super.dispose();
   }
@@ -185,7 +207,9 @@ class _PendingListScreenState extends State<PendingListScreen> with SingleTicker
       if (path != null && mounted) {
         // 尝试分享文件
         await _exportService.shareFile(path);
-        CustomToast.show(context, '导出成功：$listType清单');
+        if (mounted) {
+          CustomToast.show(context, '导出成功：$listType清单');
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -253,6 +277,8 @@ class _PendingListScreenState extends State<PendingListScreen> with SingleTicker
 
     final templates = await _templateService.getTemplates();
     final useFuzzy = await _templateService.getUseFuzzyAmount();
+    if (!mounted) return;
+
     int selectedIndex = 0;
     bool fuzzyAmount = useFuzzy;
 
@@ -438,7 +464,7 @@ class _PendingListScreenState extends State<PendingListScreen> with SingleTicker
     final lunarDate = LunarUtils.getLunarDateString(gift.date);
 
     final content = Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      // margin moved to wrapper Padding to fix Slidable action height
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
@@ -510,7 +536,7 @@ class _PendingListScreenState extends State<PendingListScreen> with SingleTicker
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Text(
+              PrivacyAwareText(
                 '¥${gift.amount.toStringAsFixed(0)}',
                 style: TextStyle(
                   fontSize: 18,
@@ -535,42 +561,55 @@ class _PendingListScreenState extends State<PendingListScreen> with SingleTicker
 
     // 桌面端使用右键菜单和长按菜单
     return GestureDetector(
-      onSecondaryTapUp: (details) => _showContextMenu(gift, details.globalPosition),
-      onLongPressStart: (details) => _showContextMenu(gift, details.globalPosition),
-      child: Slidable(
-        key: ValueKey(gift.id),
-        endActionPane: ActionPane(
-          motion: const ScrollMotion(),
-          children: [
-            SlidableAction(
-              onPressed: (_) => _markAsReturned(gift),
-              backgroundColor: Colors.green,
-              foregroundColor: Colors.white,
-              icon: Icons.check_circle_outline,
-              label: isReceived ? '还账' : '收账',
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(8),
-                bottomLeft: Radius.circular(8),
+      onSecondaryTapUp: (details) async {
+        if (!await _verifySecurityLock()) return;
+        _showContextMenu(gift, details.globalPosition);
+      },
+      onLongPressStart: (details) async {
+        if (!await _verifySecurityLock()) return;
+        _showContextMenu(gift, details.globalPosition);
+      },
+      onTap: () async {
+        if (!await _verifySecurityLock()) return;
+        // 如果需要点击查看详情，可以在这里添加逻辑
+        // 目前暂时只做点击拦截
+      },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+              child: Slidable(
+                key: ValueKey(gift.id),
+                enabled: _securityService.isUnlocked.value, // 未解锁时禁止滑动
+                endActionPane: ActionPane(
+                  motion: const ScrollMotion(),
+                  extentRatio: 0.5, // 适当缩小操作区宽度
+                  children: [
+                    SlidableAction(
+                      onPressed: (_) => _markAsReturned(gift),
+                      backgroundColor: Colors.green,
+                      foregroundColor: Colors.white,
+                      icon: Icons.check_circle_outline,
+                      label: isReceived ? '还账' : '收账',
+                      borderRadius: BorderRadius.circular(12), // 全圆角
+                    ),
+                    const SizedBox(width: 8), // 按钮之间的间距
+                    SlidableAction(
+                      onPressed: (_) => isReceived ? _openEditRecord(gift) : _showReminderDialog(gift),
+                      backgroundColor: isReceived ? Colors.grey : (gift.remindedCount > 2 ? Colors.grey : Colors.blue),
+                      foregroundColor: Colors.white,
+                      icon: isReceived
+                          ? Icons.edit_outlined
+                          : (gift.remindedCount > 2 ? Icons.warning_amber_outlined : Icons.message_outlined),
+                      label: isReceived ? '编辑' : (gift.remindedCount > 2 ? '已提醒' : '提醒'),
+                      borderRadius: BorderRadius.circular(12), // 全圆角
+                    ),
+                  ],
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 8.0), // 关键：卡片与侧滑按钮之间的间距
+                  child: content,
+                ),
               ),
-            ),
-            SlidableAction(
-              onPressed: (_) => isReceived ? _openEditRecord(gift) : _showReminderDialog(gift),
-              backgroundColor: isReceived ? Colors.grey : (gift.remindedCount > 2 ? Colors.grey : Colors.blue),
-              foregroundColor: Colors.white,
-              icon: isReceived
-                  ? Icons.edit_outlined
-                  : (gift.remindedCount > 2 ? Icons.warning_amber_outlined : Icons.message_outlined),
-              label: isReceived ? '编辑' : (gift.remindedCount > 2 ? '已提醒${gift.remindedCount}次' : '提醒'),
-              borderRadius: const BorderRadius.only(
-                topRight: Radius.circular(8),
-                bottomRight: Radius.circular(8),
-              ),
-            ),
-          ],
-        ),
-        child: content,
-      ),
-    );
+            ),    );
   }
 
   Widget _buildEmptyState(bool isUnreturned) {
@@ -634,10 +673,15 @@ class _PendingListScreenState extends State<PendingListScreen> with SingleTicker
                     ? _buildEmptyState(true)
                     : RefreshIndicator(
                         onRefresh: _loadData,
-                        child: ListView.builder(
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                          itemCount: _unreturnedGifts.length,
-                          itemBuilder: (context, index) => _buildListItem(_unreturnedGifts[index]),
+                        child: ValueListenableBuilder<bool>(
+                          valueListenable: _securityService.isUnlocked,
+                          builder: (context, isUnlocked, child) {
+                             return ListView.builder(
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              itemCount: _unreturnedGifts.length,
+                              itemBuilder: (context, index) => _buildListItem(_unreturnedGifts[index]),
+                            );
+                          },
                         ),
                       ),
                 // 待收清单
@@ -645,10 +689,15 @@ class _PendingListScreenState extends State<PendingListScreen> with SingleTicker
                     ? _buildEmptyState(false)
                     : RefreshIndicator(
                         onRefresh: _loadData,
-                        child: ListView.builder(
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                          itemCount: _pendingReceipts.length,
-                          itemBuilder: (context, index) => _buildListItem(_pendingReceipts[index]),
+                        child: ValueListenableBuilder<bool>(
+                          valueListenable: _securityService.isUnlocked,
+                          builder: (context, isUnlocked, child) {
+                             return ListView.builder(
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              itemCount: _pendingReceipts.length,
+                              itemBuilder: (context, index) => _buildListItem(_pendingReceipts[index]),
+                            );
+                          },
                         ),
                       ),
               ],

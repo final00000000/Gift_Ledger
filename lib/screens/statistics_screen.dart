@@ -3,10 +3,12 @@ import 'package:flutter/material.dart';
 import '../models/gift.dart';
 import '../models/guest.dart';
 import '../services/storage_service.dart';
+import '../services/security_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/chart_widgets.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/orbit_map.dart';
+import '../widgets/pin_code_dialog.dart';
 
 class StatisticsScreen extends StatefulWidget {
   const StatisticsScreen({super.key});
@@ -17,6 +19,7 @@ class StatisticsScreen extends StatefulWidget {
 
 class StatisticsScreenState extends State<StatisticsScreen> {
   final StorageService _db = StorageService();
+  final SecurityService _securityService = SecurityService();
 
   List<Gift> _allGifts = [];
   Map<int, Guest> _guestMap = {};
@@ -28,7 +31,22 @@ class StatisticsScreenState extends State<StatisticsScreen> {
   @override
   void initState() {
     super.initState();
+    // 监听 StorageService 变化，自动刷新数据
+    _db.addListener(_onDataChanged);
     _loadData();
+  }
+
+  /// StorageService 数据变化时的回调
+  void _onDataChanged() {
+    if (mounted) {
+      _loadData();
+    }
+  }
+
+  @override
+  void dispose() {
+    _db.removeListener(_onDataChanged);
+    super.dispose();
   }
 
   Future<void> _loadData() async {
@@ -54,7 +72,7 @@ class StatisticsScreenState extends State<StatisticsScreen> {
         });
       }
     } catch (e) {
-      print('Error loading statistics: $e');
+      debugPrint('Error loading statistics: $e');
       if (mounted) {
         setState(() => _isLoading = false);
       }
@@ -89,12 +107,51 @@ class StatisticsScreenState extends State<StatisticsScreen> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(
-                                  '统计分析',
-                                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                                    fontWeight: FontWeight.w900,
-                                    letterSpacing: -1,
-                                  ),
+                                Row(
+                                  children: [
+                                    Text(
+                                      '统计分析',
+                                      style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                                        fontWeight: FontWeight.w900,
+                                        letterSpacing: -1,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    ValueListenableBuilder<bool>(
+                                      valueListenable: _securityService.isUnlocked,
+                                      builder: (context, isUnlocked, child) {
+                                        return GestureDetector(
+                                          onTap: () async {
+                                            if (isUnlocked) {
+                                              _securityService.lock();
+                                              ScaffoldMessenger.of(context).showSnackBar(
+                                                const SnackBar(
+                                                  content: Text('金额已隐藏'), 
+                                                  duration: Duration(seconds: 1)
+                                                ),
+                                              );
+                                            } else {
+                                              await PinCodeDialog.show(context);
+                                            }
+                                          },
+                                          child: Container(
+                                            padding: const EdgeInsets.all(8),
+                                            decoration: BoxDecoration(
+                                              color: isUnlocked 
+                                                  ? AppTheme.primaryColor.withOpacity(0.1)
+                                                  : Colors.grey.withOpacity(0.1),
+                                              shape: BoxShape.circle,
+                                            ),
+                                            child: Icon(
+                                              isUnlocked ? Icons.visibility_rounded : Icons.visibility_off_rounded,
+                                              size: 20,
+                                              color: isUnlocked ? AppTheme.primaryColor : Colors.grey,
+                                            ),
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  ],
                                 ),
                                 const SizedBox(height: 4),
                                 Text(

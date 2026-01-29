@@ -1,43 +1,49 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-// 移除不兼容的 imports
-// import 'package:sqflite_common_ffi/sqflite_ffi.dart';
-// import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
-// 移除不兼容的 imports
-// import 'package:sqflite_common_ffi/sqflite_ffi.dart';
-// import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:provider/provider.dart';
 import 'theme/app_theme.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/statistics_screen.dart';
 import 'screens/add_record_screen.dart';
 import 'screens/settings_screen.dart';
 import 'services/notification_service.dart';
-// import 'widgets/quantum_bottom_nav_bar.dart'; // 暂时禁用自定义导航栏
+import 'services/security_service.dart';
+import 'services/storage_service.dart';
 
-
-// 条件导入
 // 条件导入 - 仅桌面端需要初始化
 import 'services/db_init_native.dart' if (dart.library.js_interop) 'services/db_init_stub.dart' as db_init;
 
-void main() async {
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 初始化数据库 (仅桌面端)
+  // 初始化数据库 (仅桌面端) - 同步操作，必须在 runApp 前完成
   db_init.initializeDatabase();
 
-  // 初始化通知服务
-  await NotificationService().initialize();
-
-  // 设置系统UI样式
+  // 设置系统UI样式 - 沉浸式状态栏，与应用背景色一致
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-    statusBarColor: Colors.transparent,
+    statusBarColor: Color(0xFFF2F3F5),  // AppTheme.backgroundColor
     statusBarIconBrightness: Brightness.dark,
-    systemNavigationBarColor: Colors.white,
+    statusBarBrightness: Brightness.light,
+    systemNavigationBarColor: Color(0xFFF2F3F5),
     systemNavigationBarIconBrightness: Brightness.dark,
   ));
 
+  // 立即启动 UI - 直接进入主页
   runApp(const GiftMoneyTrackerApp());
+
+  // 后台初始化非关键服务（不阻塞 UI）
+  _initServicesInBackground();
+}
+
+/// 后台初始化服务，完全不阻塞 UI
+void _initServicesInBackground() {
+  Future.microtask(() async {
+    await Future.wait([
+      NotificationService().initialize(),
+      SecurityService().init(),
+    ]);
+  });
 }
 
 class GiftMoneyTrackerApp extends StatelessWidget {
@@ -45,25 +51,31 @@ class GiftMoneyTrackerApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: '随礼记',
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.lightTheme,
-      // 禁用滚动发光效果，防止出现奇怪的边框
-      scrollBehavior: const MaterialScrollBehavior().copyWith(
-        overscroll: false,
+    return MultiProvider(
+      providers: [
+        // 使用 ChangeNotifierProvider.value 因为服务是单例，已经创建
+        ChangeNotifierProvider.value(value: StorageService()),
+        ChangeNotifierProvider.value(value: SecurityService()),
+      ],
+      child: MaterialApp(
+        title: '随礼记',
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.lightTheme,
+        scrollBehavior: const MaterialScrollBehavior().copyWith(
+          overscroll: false,
+        ),
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: const [
+          Locale('zh', 'CN'),
+          Locale('en', 'US'),
+        ],
+        locale: const Locale('zh', 'CN'),
+        home: const MainNavigation(),
       ),
-      localizationsDelegates: const [
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-      ],
-      supportedLocales: const [
-        Locale('zh', 'CN'),
-        Locale('en', 'US'),
-      ],
-      locale: const Locale('zh', 'CN'),
-      home: const MainNavigation(),
     );
   }
 }
@@ -83,46 +95,36 @@ class _MainNavigationState extends State<MainNavigation> {
     _NavItem(label: '设置', icon: Icons.settings_rounded),
   ];
 
-  // GlobalKey 用于访问子页面状态
-  final GlobalKey<DashboardScreenState> _dashboardKey = GlobalKey();
-  final GlobalKey<StatisticsScreenState> _statisticsKey = GlobalKey();
-  final GlobalKey<SettingsScreenState> _settingsKey = GlobalKey();
+  // 缓存屏幕实例，避免每次访问都创建新实例
+  // 移除 GlobalKey 反模式，使用 Provider 自动刷新机制
+  late final List<Widget> _screens;
 
-  List<Widget> get _screens => [
-    DashboardScreen(key: _dashboardKey),
-    StatisticsScreen(key: _statisticsKey),
-    SettingsScreen(key: _settingsKey),
-  ];
-
-  void _refreshPage(int index) {
-    if (index == 0) {
-      _dashboardKey.currentState?.refreshData();
-    } else if (index == 1) {
-      _statisticsKey.currentState?.refreshData();
-    } else if (index == 2) {
-      _settingsKey.currentState?.refreshData();
-    }
+  @override
+  void initState() {
+    super.initState();
+    // 初始化屏幕列表（只创建一次）
+    _screens = [
+      const DashboardScreen(),
+      const StatisticsScreen(),
+      const SettingsScreen(),
+    ];
   }
 
   // 打开添加记录页面
   Future<void> _openAddRecord() async {
-    final result = await Navigator.push(
+    await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => const AddRecordScreen(),
       ),
     );
-    
-    // 如果保存成功，刷新所有页面
-    if (result == true) {
-      _refreshPage(0);
-    }
+    // 不再需要手动刷新，StorageService 会通过 notifyListeners() 自动触发页面刷新
   }
 
   void _onTabSelected(int index) {
     if (_currentIndex == index) return;
     setState(() => _currentIndex = index);
-    _refreshPage(index);
+    // 不再需要手动刷新，页面会自动响应数据变化
   }
 
   Widget _buildDynamicDock() {
@@ -187,19 +189,11 @@ class _MainNavigationState extends State<MainNavigation> {
       backgroundColor: AppTheme.backgroundColor,
       body: Stack(
         children: [
-          Stack(
-            children: List.generate(_screens.length, (index) {
-              final isActive = _currentIndex == index;
-              return IgnorePointer(
-                ignoring: !isActive,
-                child: AnimatedOpacity(
-                  duration: const Duration(milliseconds: 120),
-                  curve: Curves.easeOut,
-                  opacity: isActive ? 1 : 0,
-                  child: _screens[index],
-                ),
-              );
-            }),
+          // 使用 IndexedStack 替代手动管理的 Stack + AnimatedOpacity
+          // IndexedStack 只渲染当前索引的子组件，但保持所有子组件的状态
+          IndexedStack(
+            index: _currentIndex,
+            children: _screens,
           ),
           Positioned(
             left: 0,

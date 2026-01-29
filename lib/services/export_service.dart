@@ -3,14 +3,13 @@ import 'dart:io';
 import 'package:excel/excel.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import '../models/gift.dart';
 import '../models/guest.dart';
 import 'storage_service.dart';
-
-import 'package:permission_handler/permission_handler.dart';
 
 class ImportResult {
   final int insertedGuests;
@@ -28,9 +27,8 @@ class ExportService {
   final StorageService _storage = StorageService();
   final DateFormat _dateFormat = DateFormat('yyyy-MM-dd');
 
-  // --- Export Methods ---
-
-  // --- Export Methods ---
+  static const MethodChannel _androidFileSaverChannel =
+      MethodChannel('com.giftmoney.gift_ledger/file_saver');
 
   Future<String?> exportToJson() async {
     try {
@@ -136,10 +134,11 @@ class ExportService {
       final fileBytes = excel.encode();
 
       if (fileBytes != null) {
-        return await _saveFile(
-          bytes: fileBytes,
-          fileName: fileName,
-        );
+        // 待处理清单的导出场景主要用于“分享”，因此统一写入临时目录并返回路径。
+        final tempDir = await getTemporaryDirectory();
+        final tempFile = File('${tempDir.path}/$fileName');
+        await tempFile.writeAsBytes(fileBytes, flush: true);
+        return tempFile.path;
       }
       return null;
     } catch (e) {
@@ -148,6 +147,11 @@ class ExportService {
   }
 
   Future<void> shareFile(String path) async {
+    final file = File(path);
+    if (!await file.exists()) {
+      throw Exception('分享失败：文件不存在');
+    }
+
     final mimeType = path.endsWith('.json') 
         ? 'application/json' 
         : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
@@ -158,67 +162,77 @@ class ExportService {
     );
   }
 
-  // --- Import Methods ---
-  // ... (Import methods remain same, skipping replacement if I can target correctly)
-  // I need to be careful with range.
-  // I'll replace the Helpers section too to rename _saveAndShareFile to _saveFile. 
-  
-  // Actually, I can replace the whole file content for safety or use multiple chunks.
-  // The 'Import Methods' block is large and unchanged.
-  // I will target _saveAndShareFile at the bottom first?
-  // Or just replace the Export methods.
-  
-  // Let's replace Helpers.
-  
-
-
-// ... class ExportService
-
   Future<String?> _saveFile({
     required List<int> bytes,
     required String fileName,
   }) async {
-    // 桌面端使用 FilePicker 保存
-    if (!kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
+    if (Platform.isAndroid) {
+      final tempDir = await getTemporaryDirectory();
+      final tempFile = File('${tempDir.path}/$fileName');
+      await tempFile.writeAsBytes(bytes, flush: true);
+
+      final mimeType = fileName.endsWith('.json')
+          ? 'application/json'
+          : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+      try {
+        final saved = await _androidFileSaverChannel.invokeMethod<bool>(
+          'saveAs',
+          {
+            'sourcePath': tempFile.path,
+            'fileName': fileName,
+            'mimeType': mimeType,
+          },
+        );
+
+        if (saved == true) {
+          return '已保存：$fileName';
+        }
+        return null; // User cancelled
+      } on PlatformException catch (e) {
+        debugPrint('Export save error: $e');
+        throw Exception('保存文件失败: ${e.message ?? e.code}');
+      } finally {
+        try {
+          await tempFile.delete();
+        } catch (_) {
+          // ignore
+        }
+      }
+    }
+
+    // Desktop & iOS: FilePicker works reliably for "Save As"
+    try {
+      // iOS 端 saveFile 需要传入 bytes，由插件完成写入与导出（不应再自行写文件）。
+      if (Platform.isIOS) {
+        final savedPath = await FilePicker.platform.saveFile(
+          dialogTitle: '保存导出文件',
+          fileName: fileName,
+          type: FileType.custom,
+          allowedExtensions: [fileName.split('.').last],
+          bytes: Uint8List.fromList(bytes),
+        );
+
+        if (savedPath == null) return null; // User cancelled
+        return '已保存：$fileName';
+      }
+
       String? outputFile = await FilePicker.platform.saveFile(
-        dialogTitle: '导出文件',
+        dialogTitle: '保存导出文件',
         fileName: fileName,
         type: FileType.custom,
         allowedExtensions: [fileName.split('.').last],
       );
 
-      if (outputFile != null) {
-        final file = File(outputFile);
-        await file.writeAsBytes(bytes);
-        return outputFile;
-      }
-      return null;
-    } else if (Platform.isAndroid) {
-      // Android 尝试保存到 Download 目录
-      try {
-        // 请求存储权限 (Android < 11 需要 storage，Android 11+ 可能需要 manageExternalStorage 但 Google Play 限制严格)
-        // 这里尝试基础 storage 权限，如果失败则回退到分享
-        if (await Permission.storage.request().isGranted || 
-            await Permission.manageExternalStorage.request().isGranted) {
-          
-          final downloadDir = Directory('/storage/emulated/0/Download');
-          if (await downloadDir.exists()) {
-            final filePath = '${downloadDir.path}/$fileName';
-            await File(filePath).writeAsBytes(bytes);
-            return filePath; // 返回公共目录路径
-          }
-        }
-      } catch (e) {
-        // 权限或IO错误，回退到临时目录
-        debugPrint('Save to Download failed: $e');
-      }
+      if (outputFile == null) return null; // User cancelled
+
+      final file = File(outputFile);
+      await file.writeAsBytes(bytes, flush: true);
+      return outputFile;
+    } catch (e) {
+      debugPrint('Export save error: $e');
+      throw Exception('保存文件失败: $e');
     }
-    
-    // 移动端默认回退：保存到临时目录（随后UI层会触发分享）
-    final directory = await getTemporaryDirectory();
-    final saveFile = File('${directory.path}/$fileName');
-    await saveFile.writeAsBytes(bytes);
-    return saveFile.path;
   }
 
   // --- Import Methods ---
@@ -302,7 +316,6 @@ class ExportService {
   Future<ImportResult> importFromExcel(String filePath) async {
     int newGuests = 0;
     int newGifts = 0;
-    var skippedDuplicates = 0;
     List<String> errors = [];
 
     try {
@@ -418,7 +431,6 @@ class ExportService {
                 gift.date.day == dateVal.day);
 
             if (isDuplicate) {
-              skippedDuplicates++;
               errors.add('第${rowIndex + 1}行: 检测到重复数据，已跳过 ($nameVal, ¥$amountVal, ${_dateFormat.format(dateVal)})');
               continue;
             }

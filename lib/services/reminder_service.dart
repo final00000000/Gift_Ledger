@@ -1,4 +1,3 @@
-import 'package:shared_preferences/shared_preferences.dart';
 import '../models/gift.dart';
 import '../models/guest.dart';
 import 'storage_service.dart';
@@ -17,16 +16,15 @@ class ReminderService {
     final unreturnedGifts = await _storageService.getUnreturnedGifts();
     // 获取所有未收的送礼记录
     final pendingReceipts = await _storageService.getPendingReceipts();
-    // 获取所有联系人
-    final guests = await _storageService.getAllGuests();
-    final guestMap = {for (var g in guests) g.id!: g};
+    // 获取所有联系人（用于后续匹配，暂时保留获取逻辑）
+    await _storageService.getAllGuests();
 
     // 为每个未还记录尝试找到匹配的送礼记录
     for (var received in unreturnedGifts) {
       if (received.relatedRecordId != null) continue;
-      
+
       final match = await findMatchingRecord(
-        received, 
+        received,
         pendingReceipts, 
         lookForReceived: false,
       );

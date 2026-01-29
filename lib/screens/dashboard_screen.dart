@@ -10,6 +10,8 @@ import '../widgets/empty_state.dart';
 import '../widgets/gift_list_item.dart';
 import '../widgets/skeleton.dart';
 import '../widgets/app_logo.dart';
+import '../services/security_service.dart';
+import '../widgets/pin_code_dialog.dart';
 import 'add_record_screen.dart';
 import 'record_list_screen.dart';
 import 'pending_list_screen.dart';
@@ -31,12 +33,36 @@ class DashboardScreenState extends State<DashboardScreen> {
   bool _isLoading = true;
   int _pendingCount = 0;  // 待处理数量
   bool _eventBooksEnabled = true;
-  bool _showHomeAmounts = true;
+  // bool _showHomeAmounts = true; // 已废弃，由安全服务接管
+  final SecurityService _securityService = SecurityService();
+
+  /// 验证安全锁，返回是否通过验证
+  Future<bool> _verifySecurityLock() async {
+    if (!_securityService.isUnlocked.value) {
+      return await PinCodeDialog.show(context);
+    }
+    return true;
+  }
 
   @override
   void initState() {
     super.initState();
+    // 监听 StorageService 变化，自动刷新数据
+    _db.addListener(_onDataChanged);
     _loadData();
+  }
+
+  /// StorageService 数据变化时的回调
+  void _onDataChanged() {
+    if (mounted) {
+      _loadData();
+    }
+  }
+
+  @override
+  void dispose() {
+    _db.removeListener(_onDataChanged);
+    super.dispose();
   }
 
   Future<void> _loadData() async {
@@ -45,7 +71,7 @@ class DashboardScreenState extends State<DashboardScreen> {
     try {
       final includeEventBooks = await _db.getStatsIncludeEventBooks();
       final eventBooksEnabled = await _db.getEventBooksEnabled();
-      final showHomeAmounts = await _db.getShowHomeAmounts();
+      // final showHomeAmounts = await _db.getShowHomeAmounts();
       
       // 并行加载所有数据
       final results = await Future.wait([
@@ -65,18 +91,18 @@ class DashboardScreenState extends State<DashboardScreen> {
           _guestMap = {for (var g in guests) g.id!: g};
           _pendingCount = results[4] as int;
           _eventBooksEnabled = eventBooksEnabled;
-          _showHomeAmounts = showHomeAmounts;
+          // _showHomeAmounts = showHomeAmounts;
           _isLoading = false;
         });
       }
     } catch (e) {
       debugPrint('Error loading data: $e');
       final eventBooksEnabled = await _db.getEventBooksEnabled();
-      final showHomeAmounts = await _db.getShowHomeAmounts();
+      // final showHomeAmounts = await _db.getShowHomeAmounts();
       if (mounted) {
         setState(() {
           _eventBooksEnabled = eventBooksEnabled;
-          _showHomeAmounts = showHomeAmounts;
+          // _showHomeAmounts = showHomeAmounts;
           _isLoading = false;
         });
       }
@@ -204,6 +230,10 @@ class DashboardScreenState extends State<DashboardScreen> {
                 Expanded(
                   child: OutlinedButton.icon(
                     onPressed: () async {
+                      // 验证安全锁
+                      if (!await _verifySecurityLock()) return;
+                      if (!mounted) return;
+
                       Navigator.pop(context);
                       final result = await Navigator.push(
                         context,
@@ -225,7 +255,11 @@ class DashboardScreenState extends State<DashboardScreen> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: FilledButton.icon(
-                    onPressed: () {
+                    onPressed: () async {
+                      // 验证安全锁
+                      if (!await _verifySecurityLock()) return;
+                      if (!mounted) return;
+
                       Navigator.pop(context);
                       _confirmDelete(gift, guestName);
                     },
@@ -277,7 +311,11 @@ class DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  void _confirmDelete(Gift gift, String guestName) {
+  Future<void> _confirmDelete(Gift gift, String guestName) async {
+    // 敏感操作前先验证安全锁
+    if (!await _verifySecurityLock()) return;
+    if (!mounted) return;
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -339,6 +377,31 @@ class DashboardScreenState extends State<DashboardScreen> {
                           style: Theme.of(context).textTheme.headlineMedium,
                         ),
                         const Spacer(),
+                        // 安全锁按钮
+                        ValueListenableBuilder<bool>(
+                          valueListenable: _securityService.isUnlocked,
+                          builder: (context, isUnlocked, child) {
+                             return IconButton(
+                               onPressed: () async {
+                                 if (isUnlocked) {
+                                   // 已解锁 -> 点击上锁
+                                   _securityService.lock();
+                                   ScaffoldMessenger.of(context).showSnackBar(
+                                     const SnackBar(content: Text('金额已隐藏'), duration: Duration(seconds: 1)),
+                                   );
+                                 } else {
+                                   // 未解锁 -> 点击解锁
+                                   await PinCodeDialog.show(context);
+                                   // 验证成功后 SecurityService 会自动更新 isUnlocked，触发重建
+                                 }
+                               },
+                               icon: Icon(
+                                 isUnlocked ? Icons.visibility_rounded : Icons.visibility_off_rounded,
+                                 color: isUnlocked ? AppTheme.primaryColor : Colors.grey,
+                               ),
+                             );
+                          },
+                        ),
                         // 待处理入口
                         IconButton(
                           onPressed: () {
@@ -365,7 +428,7 @@ class DashboardScreenState extends State<DashboardScreen> {
                     child: BalanceCard(
                       totalReceived: _totalReceived,
                       totalSent: _totalSent,
-                      showAmounts: _showHomeAmounts,
+                      // showAmounts: _showHomeAmounts, // 已由 PrivacyAwareText 接管
                       onReceivedTap: () => _navigateToRecordList(true),
                       onSentTap: () => _navigateToRecordList(false),
                     ),
@@ -482,7 +545,10 @@ class DashboardScreenState extends State<DashboardScreen> {
                             child: GiftListItem(
                               gift: gift,
                               guest: guest,
-                              onTap: () => _showGiftDetail(gift, guest),
+                              onTap: () async {
+                                if (!await _verifySecurityLock()) return;
+                                _showGiftDetail(gift, guest);
+                              },
                             ),
                           );
                         },
