@@ -23,6 +23,9 @@ class SecurityService extends ChangeNotifier with WidgetsBindingObserver {
   static const _keyHash = 'sec_hash';
   static const _keyFailCount = 'sec_fail_count';
   static const _keyLockUntil = 'sec_lock_until';
+  static const _keyHintQuestion = 'sec_hint_question';  // 密码提示问题
+  static const _keyHintAnswerHash = 'sec_hint_answer';  // 答案哈希
+  static const _keyHintSalt = 'sec_hint_salt';          // 答案盐值
   static const _lockTimeout = Duration(minutes: 1);
   static const int _maxAttempts = 5;
 
@@ -49,8 +52,10 @@ class SecurityService extends ChangeNotifier with WidgetsBindingObserver {
     _isInitialized = true;
   }
 
+  @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
   }
 
   @override
@@ -108,12 +113,25 @@ class SecurityService extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> setSecurityMode(String mode) async {
     await _storage.write(key: _keyMode, value: mode);
     if (mode == modeNone) {
+      // 关闭安全锁时，清除所有密码和提示数据
+      await clearAllSecurityData();
       isUnlocked.value = true;
       notifyListeners();
     } else {
       // 切换到有锁模式，立即上锁
       lock();
     }
+  }
+
+  /// 清除所有安全数据（密码和提示）
+  Future<void> clearAllSecurityData() async {
+    await _storage.delete(key: _keySalt);
+    await _storage.delete(key: _keyHash);
+    await _storage.delete(key: _keyFailCount);
+    await _storage.delete(key: _keyLockUntil);
+    await _storage.delete(key: _keyHintQuestion);
+    await _storage.delete(key: _keyHintSalt);
+    await _storage.delete(key: _keyHintAnswerHash);
   }
 
   /// 验证密码
@@ -200,5 +218,67 @@ class SecurityService extends ChangeNotifier with WidgetsBindingObserver {
   String _generateHash(String pin, String salt) {
     var bytes = utf8.encode(pin + salt);
     return sha256.convert(bytes).toString();
+  }
+
+  // --- 密码提示功能 ---
+
+  /// 设置密码提示问题和答案
+  Future<void> setSecurityHint(String question, String answer) async {
+    // 生成答案的盐和哈希（答案不区分大小写）
+    final salt = DateTime.now().toIso8601String() + question.length.toString();
+    final normalizedAnswer = answer.trim().toLowerCase();
+    final hash = _generateHash(normalizedAnswer, salt);
+
+    await _storage.write(key: _keyHintQuestion, value: question);
+    await _storage.write(key: _keyHintSalt, value: salt);
+    await _storage.write(key: _keyHintAnswerHash, value: hash);
+  }
+
+  /// 获取密码提示问题
+  Future<String?> getSecurityQuestion() async {
+    return await _storage.read(key: _keyHintQuestion);
+  }
+
+  /// 是否已设置密码提示
+  Future<bool> hasSecurityHint() async {
+    final question = await _storage.read(key: _keyHintQuestion);
+    final hash = await _storage.read(key: _keyHintAnswerHash);
+    return question != null && hash != null;
+  }
+
+  /// 验证密码提示答案
+  Future<bool> verifySecurityAnswer(String answer) async {
+    try {
+      final salt = await _storage.read(key: _keyHintSalt);
+      final storedHash = await _storage.read(key: _keyHintAnswerHash);
+
+      if (salt == null || storedHash == null) return false;
+
+      final normalizedAnswer = answer.trim().toLowerCase();
+      final inputHash = _generateHash(normalizedAnswer, salt);
+      return inputHash == storedHash;
+    } catch (e) {
+      debugPrint('Error verifying security answer: $e');
+      return false;
+    }
+  }
+
+  /// 重置密码（清除密码但保留提示问题）
+  Future<void> resetPassword() async {
+    await _storage.delete(key: _keySalt);
+    await _storage.delete(key: _keyHash);
+    await _storage.delete(key: _keyFailCount);
+    await _storage.delete(key: _keyLockUntil);
+    // 重置安全模式为无锁
+    await _storage.write(key: _keyMode, value: modeNone);
+    isUnlocked.value = true;
+    notifyListeners();
+  }
+
+  /// 清除密码提示
+  Future<void> clearSecurityHint() async {
+    await _storage.delete(key: _keyHintQuestion);
+    await _storage.delete(key: _keyHintSalt);
+    await _storage.delete(key: _keyHintAnswerHash);
   }
 }

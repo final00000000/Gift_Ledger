@@ -87,7 +87,7 @@ class _SkeletonContainerState extends State<SkeletonContainer>
   }
 }
 
-/// 首页骨架屏
+/// 首页骨架屏 - 适配新的视觉革命布局
 class DashboardSkeleton extends StatelessWidget {
   const DashboardSkeleton({super.key});
 
@@ -106,20 +106,47 @@ class DashboardSkeleton extends StatelessWidget {
             ),
             child: Row(
               children: [
-                const SkeletonContainer.square(width: 40, height: 40, borderRadius: 12),
+                const SkeletonContainer.square(width: 48, height: 48, borderRadius: 12),
                 const SizedBox(width: 12),
-                SkeletonContainer.square(width: 120, height: 24, borderRadius: 4),
+                SkeletonContainer.square(width: 80, height: 24, borderRadius: 4),
+                const Spacer(),
+                const SkeletonContainer.circle(size: 40),
+                const SizedBox(width: 8),
+                const SkeletonContainer.circle(size: 40),
               ],
             ),
           ),
 
-          // 收支卡片占位
+          // Hero Section 占位 - 全屏渐变英雄区
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacingM),
             child: SkeletonContainer.square(
               width: double.infinity,
-              height: 180,
-              borderRadius: AppTheme.radiusLarge,
+              height: 220,
+              borderRadius: 28,
+            ),
+          ),
+
+          const SizedBox(height: AppTheme.spacingL),
+
+          // Quick Action Grid 占位 - 2x2 网格
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacingM),
+            child: GridView.count(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              crossAxisCount: 2,
+              mainAxisSpacing: 12,
+              crossAxisSpacing: 12,
+              childAspectRatio: 1.6,
+              children: List.generate(
+                4,
+                (index) => SkeletonContainer.square(
+                  width: double.infinity,
+                  height: double.infinity,
+                  borderRadius: 20,
+                ),
+              ),
             ),
           ),
 
@@ -131,21 +158,21 @@ class DashboardSkeleton extends StatelessWidget {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                 SkeletonContainer.square(width: 80, height: 24, borderRadius: 4),
-                 SkeletonContainer.square(width: 60, height: 20, borderRadius: 4),
+                SkeletonContainer.square(width: 80, height: 24, borderRadius: 4),
+                SkeletonContainer.square(width: 60, height: 20, borderRadius: 4),
               ],
             ),
           ),
 
           const SizedBox(height: AppTheme.spacingM),
 
-          // 列表项占位 (生成 5 个)
-          ListView.separated(
+          // 时间轴列表项占位 (生成 4 个)
+          ListView.builder(
             shrinkWrap: true,
-            padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacingM),
-            itemCount: 5,
-            separatorBuilder: (context, index) => const SizedBox(height: AppTheme.spacingM),
-            itemBuilder: (context, index) => const _ListItemSkeleton(),
+            physics: const NeverScrollableScrollPhysics(),
+            padding: EdgeInsets.zero,
+            itemCount: 4,
+            itemBuilder: (context, index) => const _TimelineItemSkeleton(),
           ),
         ],
       ),
@@ -153,36 +180,73 @@ class DashboardSkeleton extends StatelessWidget {
   }
 }
 
-class _ListItemSkeleton extends StatelessWidget {
-  const _ListItemSkeleton();
+/// 时间轴列表项骨架
+class _TimelineItemSkeleton extends StatelessWidget {
+  const _TimelineItemSkeleton();
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(AppTheme.spacingM),
-      decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
-        border: Border.all(color: Theme.of(context).dividerColor.withOpacity(0.1)),
-      ),
+    return IntrinsicHeight(
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // 头像
-          const SkeletonContainer.circle(size: 48),
-          const SizedBox(width: AppTheme.spacingM),
-          // 文本区域
-          Expanded(
+          // 左侧时间轴
+          SizedBox(
+            width: 60,
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                SkeletonContainer.square(width: 100, height: 16, borderRadius: 4),
-                const SizedBox(height: 8),
-                SkeletonContainer.square(width: 60, height: 12, borderRadius: 4),
+                const SizedBox(height: 12),
+                const SkeletonContainer.circle(size: 12),
+                Expanded(
+                  child: Container(
+                    width: 2,
+                    color: Colors.grey.withOpacity(0.1),
+                  ),
+                ),
               ],
             ),
           ),
-          // 金额
-          SkeletonContainer.square(width: 80, height: 20, borderRadius: 4),
+          // 右侧卡片
+          Expanded(
+            child: Container(
+              margin: const EdgeInsets.only(
+                right: AppTheme.spacingM,
+                bottom: AppTheme.spacingS,
+              ),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Theme.of(context).cardColor,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.grey.withOpacity(0.1)),
+              ),
+              child: Row(
+                children: [
+                  // 图标
+                  SkeletonContainer.square(width: 44, height: 44, borderRadius: 12),
+                  const SizedBox(width: 12),
+                  // 信息
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            SkeletonContainer.square(width: 60, height: 16, borderRadius: 4),
+                            const SizedBox(width: 8),
+                            SkeletonContainer.square(width: 40, height: 16, borderRadius: 6),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        SkeletonContainer.square(width: 80, height: 12, borderRadius: 4),
+                      ],
+                    ),
+                  ),
+                  // 金额
+                  SkeletonContainer.square(width: 70, height: 20, borderRadius: 4),
+                ],
+              ),
+            ),
+          ),
         ],
       ),
     );

@@ -5,11 +5,12 @@ import '../models/guest.dart';
 import '../services/storage_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/lunar_utils.dart';
-import '../widgets/balance_card.dart';
 import '../widgets/empty_state.dart';
-import '../widgets/gift_list_item.dart';
 import '../widgets/skeleton.dart';
 import '../widgets/app_logo.dart';
+import '../widgets/hero_section.dart';
+import '../widgets/horizontal_quick_actions.dart';
+import '../widgets/grouped_timeline.dart';
 import '../services/security_service.dart';
 import '../widgets/pin_code_dialog.dart';
 import 'add_record_screen.dart';
@@ -24,17 +25,25 @@ class DashboardScreen extends StatefulWidget {
   DashboardScreenState createState() => DashboardScreenState();
 }
 
-class DashboardScreenState extends State<DashboardScreen> {
+class DashboardScreenState extends State<DashboardScreen>
+    with SingleTickerProviderStateMixin {
   final StorageService _db = StorageService();
   double _totalReceived = 0;
   double _totalSent = 0;
   List<Gift> _recentGifts = [];
   Map<int, Guest> _guestMap = {};
   bool _isLoading = true;
-  int _pendingCount = 0;  // 待处理数量
+  int _pendingCount = 0;
   bool _eventBooksEnabled = true;
-  // bool _showHomeAmounts = true; // 已废弃，由安全服务接管
   final SecurityService _securityService = SecurityService();
+  bool _isFirstLoad = true;  // 标记是否首次加载，用于控制入场动画
+
+  // 动画控制器
+  late AnimationController _animationController;
+  late Animation<double> _headerAnimation;
+  late Animation<double> _heroAnimation;
+  late Animation<double> _gridAnimation;
+  late Animation<double> _listAnimation;
 
   /// 验证安全锁，返回是否通过验证
   Future<bool> _verifySecurityLock() async {
@@ -47,12 +56,47 @@ class DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
-    // 监听 StorageService 变化，自动刷新数据
+    _initAnimations();
     _db.addListener(_onDataChanged);
     _loadData();
   }
 
-  /// StorageService 数据变化时的回调
+  void _initAnimations() {
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1400),
+    );
+
+    // 分层动画 - 头部 → 英雄区 → 洞察卡片 → 网格 → 列表
+    _headerAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _animationController,
+        curve: const Interval(0.0, 0.25, curve: Curves.easeOutCubic),
+      ),
+    );
+
+    _heroAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _animationController,
+        curve: const Interval(0.1, 0.4, curve: Curves.easeOutCubic),
+      ),
+    );
+
+    _gridAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _animationController,
+        curve: const Interval(0.4, 0.7, curve: Curves.easeOutCubic),
+      ),
+    );
+
+    _listAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _animationController,
+        curve: const Interval(0.55, 1.0, curve: Curves.easeOutCubic),
+      ),
+    );
+  }
+
   void _onDataChanged() {
     if (mounted) {
       _loadData();
@@ -61,6 +105,7 @@ class DashboardScreenState extends State<DashboardScreen> {
 
   @override
   void dispose() {
+    _animationController.dispose();
     _db.removeListener(_onDataChanged);
     super.dispose();
   }
@@ -71,50 +116,56 @@ class DashboardScreenState extends State<DashboardScreen> {
     try {
       final includeEventBooks = await _db.getStatsIncludeEventBooks();
       final eventBooksEnabled = await _db.getEventBooksEnabled();
-      // final showHomeAmounts = await _db.getShowHomeAmounts();
-      
-      // 并行加载所有数据
+
       final results = await Future.wait([
         _db.getTotalReceived(includeEventBooks: includeEventBooks),
         _db.getTotalSent(includeEventBooks: includeEventBooks),
-        _db.getRecentGifts(limit: 10),
+        _db.getRecentGifts(limit: 20),
         _db.getAllGuests(),
         _db.getPendingCount(includeEventBooks: includeEventBooks),
       ]);
 
       if (mounted) {
+        final guests = results[3] as List<Guest>;
+        final guestMap = {for (var g in guests) g.id!: g};
+
         setState(() {
           _totalReceived = results[0] as double;
           _totalSent = results[1] as double;
-          _recentGifts = results[2] as List<Gift>;
-          final guests = results[3] as List<Guest>;
-          _guestMap = {for (var g in guests) g.id!: g};
+          _recentGifts = (results[2] as List<Gift>).take(10).toList();
+          _guestMap = guestMap;
           _pendingCount = results[4] as int;
           _eventBooksEnabled = eventBooksEnabled;
-          // _showHomeAmounts = showHomeAmounts;
           _isLoading = false;
         });
+
+        // 只在首次加载时播放入场动画
+        if (_isFirstLoad) {
+          _isFirstLoad = false;
+          _animationController.forward(from: 0.0);
+        }
       }
     } catch (e) {
       debugPrint('Error loading data: $e');
       final eventBooksEnabled = await _db.getEventBooksEnabled();
-      // final showHomeAmounts = await _db.getShowHomeAmounts();
       if (mounted) {
         setState(() {
           _eventBooksEnabled = eventBooksEnabled;
-          // _showHomeAmounts = showHomeAmounts;
           _isLoading = false;
         });
+        // 只在首次加载时播放入场动画
+        if (_isFirstLoad) {
+          _isFirstLoad = false;
+          _animationController.forward(from: 0.0);
+        }
       }
     }
   }
 
-  // 公开的刷新方法
   void refreshData() {
     _loadData();
   }
 
-  // 导航到详情列表
   void _navigateToRecordList(bool isReceived) {
     Navigator.push(
       context,
@@ -136,10 +187,7 @@ class DashboardScreenState extends State<DashboardScreen> {
           );
         },
       ),
-    ).then((_) {
-      // 返回时刷新数据
-      refreshData();
-    });
+    ).then((_) => refreshData());
   }
 
   void _showGiftDetail(Gift gift, Guest? guest) {
@@ -160,7 +208,6 @@ class DashboardScreenState extends State<DashboardScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 拖动条
             Center(
               child: Container(
                 width: 40,
@@ -172,7 +219,6 @@ class DashboardScreenState extends State<DashboardScreen> {
                 ),
               ),
             ),
-            // 标题
             Row(
               children: [
                 Container(
@@ -215,7 +261,6 @@ class DashboardScreenState extends State<DashboardScreen> {
             const SizedBox(height: 20),
             const Divider(),
             const SizedBox(height: 16),
-            // 详情信息
             _buildDetailRow('类型', gift.isReceived ? '收礼' : '送礼'),
             _buildDetailRow('事由', gift.eventType),
             _buildDetailRow('金额', '¥${gift.amount.toStringAsFixed(0)}'),
@@ -224,13 +269,11 @@ class DashboardScreenState extends State<DashboardScreen> {
             if (gift.note != null && gift.note!.isNotEmpty)
               _buildDetailRow('备注', gift.note!),
             const SizedBox(height: 24),
-            // 操作按钮
             Row(
               children: [
                 Expanded(
                   child: OutlinedButton.icon(
                     onPressed: () async {
-                      // 验证安全锁
                       if (!await _verifySecurityLock()) return;
                       if (!mounted) return;
 
@@ -256,7 +299,6 @@ class DashboardScreenState extends State<DashboardScreen> {
                 Expanded(
                   child: FilledButton.icon(
                     onPressed: () async {
-                      // 验证安全锁
                       if (!await _verifySecurityLock()) return;
                       if (!mounted) return;
 
@@ -312,7 +354,6 @@ class DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _confirmDelete(Gift gift, String guestName) async {
-    // 敏感操作前先验证安全锁
     if (!await _verifySecurityLock()) return;
     if (!mounted) return;
 
@@ -345,217 +386,273 @@ class DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
+  /// 构建横向快捷操作项列表
+  List<HorizontalActionItem> _buildHorizontalActions() {
+    final items = <HorizontalActionItem>[];
+
+    // 活动簿（如果启用）
+    if (_eventBooksEnabled) {
+      items.add(HorizontalActionItem(
+        title: '活动簿',
+        icon: Icons.book_rounded,
+        color: AppTheme.eventBookColor,
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const EventBookListScreen(),
+            ),
+          ).then((_) => refreshData());
+        },
+      ));
+    }
+
+    // 待处理
+    items.add(HorizontalActionItem(
+      title: '待处理',
+      icon: Icons.pending_actions_rounded,
+      color: AppTheme.pendingColor,
+      badge: _pendingCount > 0 ? _pendingCount : null,
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => const PendingListScreen(),
+          ),
+        ).then((_) => refreshData());
+      },
+    ));
+
+    // 全部记录
+    items.add(HorizontalActionItem(
+      title: '记录',
+      icon: Icons.list_alt_rounded,
+      color: const Color(0xFF06B6D4),
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => const RecordListScreen(),
+          ),
+        ).then((_) => refreshData());
+      },
+    ));
+
+    return items;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
+    final fabBottom = 64.0 + (bottomPadding > 12 ? bottomPadding : 12.0) + 16.0; // dock高度 + 安全区域 + 间距
+
     return Scaffold(
-      body: SafeArea(
-        child: RefreshIndicator(
-          onRefresh: _loadData,
-          color: AppTheme.primaryColor,
-          child: CustomScrollView(
-            slivers: [
-              if (_isLoading && _recentGifts.isEmpty)
-                SliverFillRemaining(
-                  child: DashboardSkeleton(),
-                )
-              else ...[
-                // 标题
+      body: Stack(
+        children: [
+          SafeArea(
+            child: RefreshIndicator(
+              onRefresh: _loadData,
+              color: AppTheme.primaryColor,
+              child: CustomScrollView(
+                slivers: [
+                  if (_isLoading && _recentGifts.isEmpty)
+                    const SliverFillRemaining(
+                      child: DashboardSkeleton(),
+                    )
+                  else ...[
+                // 头部标题 - 带动画
                 SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(
-                      AppTheme.spacingL,
-                      AppTheme.spacingL,
-                      AppTheme.spacingL,
-                      AppTheme.spacingS,
-                    ),
-                    child: Row(
-                      children: [
-                        const AppLogo(size: 48),
-                        const SizedBox(width: AppTheme.spacingM),
-                        Text(
-                          '随礼记',
-                          style: Theme.of(context).textTheme.headlineMedium,
+                  child: AnimatedBuilder(
+                    animation: _headerAnimation,
+                    builder: (context, child) {
+                      return Transform.translate(
+                        offset: Offset(0, 20 * (1 - _headerAnimation.value)),
+                        child: Opacity(
+                          opacity: _headerAnimation.value,
+                          child: child,
                         ),
-                        const Spacer(),
-                        // 安全锁按钮
-                        ValueListenableBuilder<bool>(
-                          valueListenable: _securityService.isUnlocked,
-                          builder: (context, isUnlocked, child) {
-                             return IconButton(
-                               onPressed: () async {
-                                 if (isUnlocked) {
-                                   // 已解锁 -> 点击上锁
-                                   _securityService.lock();
-                                   ScaffoldMessenger.of(context).showSnackBar(
-                                     const SnackBar(content: Text('金额已隐藏'), duration: Duration(seconds: 1)),
-                                   );
-                                 } else {
-                                   // 未解锁 -> 点击解锁
-                                   await PinCodeDialog.show(context);
-                                   // 验证成功后 SecurityService 会自动更新 isUnlocked，触发重建
-                                 }
-                               },
-                               icon: Icon(
-                                 isUnlocked ? Icons.visibility_rounded : Icons.visibility_off_rounded,
-                                 color: isUnlocked ? AppTheme.primaryColor : Colors.grey,
-                               ),
-                             );
-                          },
-                        ),
-                        // 待处理入口
-                        IconButton(
-                          onPressed: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => const PendingListScreen(),
-                              ),
-                            ).then((_) => refreshData());
-                          },
-                          icon: Badge(
-                            isLabelVisible: _pendingCount > 0,
-                            label: Text('$_pendingCount'),
-                            child: const Icon(Icons.pending_actions_rounded),
-                          ),
-                        ),
-                      ],
-                    ),
+                      );
+                    },
+                    child: _buildHeader(),
                   ),
                 ),
-                // 收支卡片 - 添加点击事件
+
+                // Hero Section - 带动画
                 SliverToBoxAdapter(
-                  child: RepaintBoundary(
-                    child: BalanceCard(
+                  child: AnimatedBuilder(
+                    animation: _heroAnimation,
+                    builder: (context, child) {
+                      return Transform.translate(
+                        offset: Offset(0, 30 * (1 - _heroAnimation.value)),
+                        child: Opacity(
+                          opacity: _heroAnimation.value,
+                          child: child,
+                        ),
+                      );
+                    },
+                    child: HeroSection(
                       totalReceived: _totalReceived,
                       totalSent: _totalSent,
-                      // showAmounts: _showHomeAmounts, // 已由 PrivacyAwareText 接管
                       onReceivedTap: () => _navigateToRecordList(true),
                       onSentTap: () => _navigateToRecordList(false),
                     ),
                   ),
                 ),
-                if (_eventBooksEnabled)
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacingL, vertical: 8),
-                      child: Material(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        child: InkWell(
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => const EventBookListScreen(),
-                              ),
-                            ).then((_) => refreshData());
-                          },
-                          borderRadius: BorderRadius.circular(16),
-                          child: Padding(
-                            padding: const EdgeInsets.all(20),
-                            child: Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(12),
-                                  decoration: BoxDecoration(
-                                    color: Colors.purple.withOpacity(0.1),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: const Icon(Icons.book, color: Colors.purple),
-                                ),
-                                const SizedBox(width: 16),
-                                const Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        '活动簿',
-                                        style: TextStyle(
-                                          fontSize: 18,
-                                          fontWeight: FontWeight.bold,
-                                          color: AppTheme.textPrimary,
-                                        ),
-                                      ),
-                                      Text(
-                                        '管理婚礼、满月酒等特定活动的礼金',
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: AppTheme.textSecondary,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                const Icon(Icons.chevron_right, color: Colors.grey),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                // 最近记录标题
+
+                const SliverToBoxAdapter(
+                  child: SizedBox(height: AppTheme.spacingM),
+                ),
+
+                // 横向快捷操作 - 带动画
                 SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(
-                      AppTheme.spacingL,
-                      AppTheme.spacingL,
-                      AppTheme.spacingL,
-                      AppTheme.spacingXS,
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          '最近记录',
-                          style: Theme.of(context).textTheme.titleLarge,
+                  child: AnimatedBuilder(
+                    animation: _gridAnimation,
+                    builder: (context, child) {
+                      return Transform.translate(
+                        offset: Offset(0, 30 * (1 - _gridAnimation.value)),
+                        child: Opacity(
+                          opacity: _gridAnimation.value,
+                          child: child,
                         ),
-                        if (_recentGifts.isNotEmpty)
-                          TextButton(
-                            onPressed: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => const RecordListScreen(),
-                                ),
-                              ).then((_) => refreshData());
-                            },
-                            child: const Text('查看全部'),
-                          ),
-                      ],
+                      );
+                    },
+                    child: HorizontalQuickActions(
+                      items: _buildHorizontalActions(),
+                      animationDelay: const Duration(milliseconds: 400),
                     ),
                   ),
                 ),
-                // 最近记录列表
+
+                const SliverToBoxAdapter(
+                  child: SizedBox(height: AppTheme.spacingXL),
+                ),
+
+                // 最近记录标题 - 带动画
+                SliverToBoxAdapter(
+                  child: AnimatedBuilder(
+                    animation: _listAnimation,
+                    builder: (context, child) {
+                      return Opacity(
+                        opacity: _listAnimation.value,
+                        child: child,
+                      );
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: AppTheme.spacingM,
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(
+                            children: [
+                              // 简洁装饰条
+                              Container(
+                                width: 3,
+                                height: 18,
+                                decoration: BoxDecoration(
+                                  color: AppTheme.primaryColor,
+                                  borderRadius: BorderRadius.circular(2),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                '最近记录',
+                                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (_recentGifts.isNotEmpty)
+                            TextButton(
+                              onPressed: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => const RecordListScreen(),
+                                  ),
+                                ).then((_) => refreshData());
+                              },
+                              style: TextButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
+                                minimumSize: Size.zero,
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    '查看全部',
+                                    style: TextStyle(
+                                      color: AppTheme.textSecondary,
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                  Icon(
+                                    Icons.chevron_right_rounded,
+                                    size: 16,
+                                    color: AppTheme.textSecondary,
+                                  ),
+                                ],
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+
+                const SliverToBoxAdapter(
+                  child: SizedBox(height: AppTheme.spacingS),
+                ),
+
+                // 最近记录列表 - 分组时间轴样式
                 if (_recentGifts.isEmpty)
                   SliverFillRemaining(
                     child: _buildEmptyState(),
                   )
                 else
-                  SliverPadding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 4,
-                    ),
-                    sliver: SliverList(
-                      delegate: SliverChildBuilderDelegate(
-                        (context, index) {
-                          final gift = _recentGifts[index];
-                          final guest = _guestMap[gift.guestId];
-                          return RepaintBoundary(
-                            child: GiftListItem(
-                              gift: gift,
-                              guest: guest,
-                              onTap: () async {
-                                if (!await _verifySecurityLock()) return;
-                                _showGiftDetail(gift, guest);
-                              },
+                  SliverToBoxAdapter(
+                    child: GroupedTimeline(
+                      gifts: _recentGifts,
+                      guestMap: _guestMap,
+                      animationDelay: const Duration(milliseconds: 600),
+                      onTap: (gift, guest) async {
+                        if (!await _verifySecurityLock()) return;
+                        _showGiftDetail(gift, guest);
+                      },
+                      onEdit: (gift, guest) async {
+                        if (!await _verifySecurityLock()) return;
+                        final result = await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => AddRecordScreen(
+                              editingGift: gift,
+                              editingGuest: guest,
                             ),
+                          ),
+                        );
+                        if (result == true) {
+                          _loadData();
+                        }
+                      },
+                      onDelete: (gift) async {
+                        await _db.deleteGift(gift.id!);
+                        _loadData();
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('已删除')),
                           );
-                        },
-                        childCount: _recentGifts.length,
-                      ),
+                        }
+                      },
                     ),
                   ),
+
                 // 底部间距
                 const SliverToBoxAdapter(
                   child: SizedBox(height: 120),
@@ -564,6 +661,92 @@ class DashboardScreenState extends State<DashboardScreen> {
             ],
           ),
         ),
+      ),
+      // FAB 放在 Stack 中，位于底部导航栏上方
+      Positioned(
+        right: 16,
+        bottom: fabBottom,
+        child: FloatingActionButton(
+          onPressed: () async {
+            final result = await Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const AddRecordScreen(),
+              ),
+            );
+            if (mounted && result == true) {
+              _loadData();
+            }
+          },
+          backgroundColor: AppTheme.primaryColor,
+          child: const Icon(Icons.add, color: Colors.white),
+        ),
+      ),
+    ],
+  ),
+);
+  }
+
+  Widget _buildHeader() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppTheme.spacingM,
+        AppTheme.spacingM,
+        AppTheme.spacingM,
+        AppTheme.spacingS,
+      ),
+      child: Row(
+        children: [
+          const AppLogo(size: 44),
+          const SizedBox(width: AppTheme.spacingS),
+          Text(
+            '随礼记',
+            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const Spacer(),
+          // 安全锁按钮
+          ValueListenableBuilder<bool>(
+            valueListenable: _securityService.isUnlocked,
+            builder: (context, isUnlocked, child) {
+              return Container(
+                decoration: BoxDecoration(
+                  color: isUnlocked
+                      ? AppTheme.primaryColor.withOpacity(0.08)
+                      : Colors.grey.withOpacity(0.06),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: IconButton(
+                  onPressed: () async {
+                    if (isUnlocked) {
+                      _securityService.lock();
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: const Text('金额已隐藏'),
+                          duration: const Duration(seconds: 1),
+                          backgroundColor: AppTheme.primaryColor,
+                          behavior: SnackBarBehavior.floating,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                      );
+                    } else {
+                      await PinCodeDialog.show(context);
+                    }
+                  },
+                  icon: Icon(
+                    isUnlocked
+                        ? Icons.visibility_rounded
+                        : Icons.visibility_off_rounded,
+                    color: isUnlocked ? AppTheme.primaryColor : AppTheme.textSecondary,
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
       ),
     );
   }

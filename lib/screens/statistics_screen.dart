@@ -9,6 +9,7 @@ import '../widgets/chart_widgets.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/orbit_map.dart';
 import '../widgets/pin_code_dialog.dart';
+import '../widgets/insight_card.dart';
 
 class StatisticsScreen extends StatefulWidget {
   const StatisticsScreen({super.key});
@@ -27,6 +28,12 @@ class StatisticsScreenState extends State<StatisticsScreen> {
   List<int> _availableYears = [];
   int? _selectedYear;
   bool _isLoading = true;
+
+  // 智能洞察数据
+  double? _receivedTrend;
+  double? _mostCommonAmount;
+  String? _mostFrequentContact;
+  int _mostFrequentContactCount = 0;
 
   @override
   void initState() {
@@ -70,6 +77,8 @@ class StatisticsScreenState extends State<StatisticsScreen> {
           _selectedYear = selectedYear;
           _isLoading = false;
         });
+        // 计算洞察数据
+        _calculateInsights(_allGifts, _guestMap);
       }
     } catch (e) {
       debugPrint('Error loading statistics: $e');
@@ -82,6 +91,135 @@ class StatisticsScreenState extends State<StatisticsScreen> {
   // 公开的刷新方法
   void refreshData() {
     _loadData();
+  }
+
+  /// 计算智能洞察数据
+  void _calculateInsights(List<Gift> allGifts, Map<int, Guest> guestMap) {
+    if (allGifts.isEmpty) return;
+
+    final now = DateTime.now();
+    final thisMonth = DateTime(now.year, now.month, 1);
+    final lastMonth = DateTime(now.year, now.month - 1, 1);
+    final lastMonthEnd = thisMonth.subtract(const Duration(days: 1));
+
+    // 计算本月和上月的收礼/送礼总额
+    double thisMonthReceived = 0;
+    double lastMonthReceived = 0;
+
+    // 统计金额频率和联系人频率
+    final amountCount = <double, int>{};
+    final contactCount = <int, int>{};
+
+    for (final gift in allGifts) {
+      // 本月数据
+      if (gift.date.isAfter(thisMonth.subtract(const Duration(seconds: 1)))) {
+        if (gift.isReceived) {
+          thisMonthReceived += gift.amount;
+        }
+      }
+      // 上月数据
+      else if (gift.date.isAfter(lastMonth.subtract(const Duration(seconds: 1))) &&
+          gift.date.isBefore(lastMonthEnd.add(const Duration(days: 1)))) {
+        if (gift.isReceived) {
+          lastMonthReceived += gift.amount;
+        }
+      }
+
+      // 统计金额频率
+      amountCount[gift.amount] = (amountCount[gift.amount] ?? 0) + 1;
+
+      // 统计联系人频率
+      if (gift.guestId != null) {
+        contactCount[gift.guestId!] = (contactCount[gift.guestId!] ?? 0) + 1;
+      }
+    }
+
+    // 计算环比变化
+    if (lastMonthReceived > 0) {
+      _receivedTrend = ((thisMonthReceived - lastMonthReceived) / lastMonthReceived) * 100;
+    } else if (thisMonthReceived > 0) {
+      _receivedTrend = 100;
+    } else {
+      _receivedTrend = null;
+    }
+
+    // 找出最常见金额
+    if (amountCount.isNotEmpty) {
+      var maxCount = 0;
+      double? mostCommon;
+      amountCount.forEach((amount, count) {
+        if (count > maxCount) {
+          maxCount = count;
+          mostCommon = amount;
+        }
+      });
+      _mostCommonAmount = mostCommon;
+    }
+
+    // 找出最频繁联系人
+    if (contactCount.isNotEmpty) {
+      var maxCount = 0;
+      int? mostFrequentId;
+      contactCount.forEach((guestId, count) {
+        if (count > maxCount) {
+          maxCount = count;
+          mostFrequentId = guestId;
+        }
+      });
+      if (mostFrequentId != null && guestMap.containsKey(mostFrequentId)) {
+        _mostFrequentContact = guestMap[mostFrequentId]!.name;
+        _mostFrequentContactCount = maxCount;
+      }
+    }
+  }
+
+  /// 构建智能洞察数据
+  List<InsightData> _buildInsights() {
+    final insights = <InsightData>[];
+
+    // 环比变化洞察
+    if (_receivedTrend != null) {
+      final trend = _receivedTrend!;
+      final isUp = trend >= 0;
+      insights.add(InsightData(
+        title: '本月收礼趋势',
+        value: '${isUp ? "增长" : "下降"} ${trend.abs().toStringAsFixed(1)}%',
+        description: '相比上月',
+        icon: isUp ? Icons.trending_up_rounded : Icons.trending_down_rounded,
+      ));
+    }
+
+    // 最常见金额洞察
+    if (_mostCommonAmount != null) {
+      insights.add(InsightData(
+        title: '最常见礼金金额',
+        value: '¥${_mostCommonAmount!.toStringAsFixed(0)}',
+        description: '出现频率最高',
+        icon: Icons.attach_money_rounded,
+      ));
+    }
+
+    // 最频繁联系人洞察
+    if (_mostFrequentContact != null) {
+      insights.add(InsightData(
+        title: '最常往来联系人',
+        value: _mostFrequentContact!,
+        description: '共 $_mostFrequentContactCount 次往来',
+        icon: Icons.person_rounded,
+      ));
+    }
+
+    // 如果没有足够数据，添加默认洞察
+    if (insights.isEmpty) {
+      insights.add(const InsightData(
+        title: '开始记录',
+        value: '添加更多记录解锁洞察',
+        description: '智能分析您的礼金往来',
+        icon: Icons.auto_awesome,
+      ));
+    }
+
+    return insights;
   }
 
   @override
@@ -100,70 +238,67 @@ class StatisticsScreenState extends State<StatisticsScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // 简化的头部
                       Row(
-                        crossAxisAlignment: CrossAxisAlignment.end,
+                        crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Row(
-                                  children: [
-                                    Text(
-                                      '统计分析',
-                                      style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                                        fontWeight: FontWeight.w900,
-                                        letterSpacing: -1,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    ValueListenableBuilder<bool>(
-                                      valueListenable: _securityService.isUnlocked,
-                                      builder: (context, isUnlocked, child) {
-                                        return GestureDetector(
-                                          onTap: () async {
-                                            if (isUnlocked) {
-                                              _securityService.lock();
-                                              ScaffoldMessenger.of(context).showSnackBar(
-                                                const SnackBar(
-                                                  content: Text('金额已隐藏'), 
-                                                  duration: Duration(seconds: 1)
-                                                ),
-                                              );
-                                            } else {
-                                              await PinCodeDialog.show(context);
-                                            }
-                                          },
-                                          child: Container(
-                                            padding: const EdgeInsets.all(8),
-                                            decoration: BoxDecoration(
-                                              color: isUnlocked 
-                                                  ? AppTheme.primaryColor.withOpacity(0.1)
-                                                  : Colors.grey.withOpacity(0.1),
-                                              shape: BoxShape.circle,
-                                            ),
-                                            child: Icon(
-                                              isUnlocked ? Icons.visibility_rounded : Icons.visibility_off_rounded,
-                                              size: 20,
-                                              color: isUnlocked ? AppTheme.primaryColor : Colors.grey,
-                                            ),
-                                          ),
-                                        );
-                                      },
-                                    ),
-                                  ],
+                                Text(
+                                  '统计分析',
+                                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                  ),
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
                                   '数据概览与往来详情',
                                   style: TextStyle(
-                                    color: AppTheme.textSecondary.withOpacity(0.5),
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w500,
+                                    color: AppTheme.textSecondary,
+                                    fontSize: 13,
                                   ),
                                 ),
                               ],
                             ),
+                          ),
+                          // 安全锁按钮
+                          ValueListenableBuilder<bool>(
+                            valueListenable: _securityService.isUnlocked,
+                            builder: (context, isUnlocked, child) {
+                              return Container(
+                                margin: const EdgeInsets.only(right: 8),
+                                decoration: BoxDecoration(
+                                  color: isUnlocked
+                                      ? AppTheme.primaryColor.withOpacity(0.08)
+                                      : Colors.grey.withOpacity(0.06),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: IconButton(
+                                  onPressed: () async {
+                                    if (isUnlocked) {
+                                      _securityService.lock();
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(
+                                          content: Text('金额已隐藏'),
+                                          duration: Duration(seconds: 1),
+                                        ),
+                                      );
+                                    } else {
+                                      await PinCodeDialog.show(context);
+                                    }
+                                  },
+                                  icon: Icon(
+                                    isUnlocked
+                                        ? Icons.visibility_rounded
+                                        : Icons.visibility_off_rounded,
+                                    size: 20,
+                                    color: isUnlocked ? AppTheme.primaryColor : AppTheme.textSecondary,
+                                  ),
+                                ),
+                              );
+                            },
                           ),
                           _buildYearSelector(),
                         ],
@@ -175,6 +310,14 @@ class StatisticsScreenState extends State<StatisticsScreen> {
                           animate: false,
                         )
                       else ...[
+                        // 智能洞察卡片 - 数据足够时才显示
+                        if (_allGifts.length >= 3) ...[
+                          InsightCard(
+                            insights: _buildInsights(),
+                            animationDelay: const Duration(milliseconds: 200),
+                          ),
+                          const SizedBox(height: AppTheme.spacingL),
+                        ],
                         // 分类对称柱状图
                         SymmetryBarChart(
                           gifts: visibleGifts,
@@ -304,8 +447,8 @@ class StatisticsScreenState extends State<StatisticsScreen> {
             color: _selectedYear == null ? Colors.white : AppTheme.primaryColor.withOpacity(0.05),
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
-              color: _selectedYear == null 
-                  ? AppTheme.textSecondary.withOpacity(0.1) 
+              color: _selectedYear == null
+                  ? AppTheme.textSecondary.withOpacity(0.1)
                   : AppTheme.primaryColor.withOpacity(0.15),
               width: 1,
             ),
@@ -335,8 +478,8 @@ class StatisticsScreenState extends State<StatisticsScreen> {
               Icon(
                 Icons.keyboard_arrow_down_rounded,
                 size: 18,
-                color: _selectedYear == null 
-                    ? AppTheme.textSecondary.withOpacity(0.5) 
+                color: _selectedYear == null
+                    ? AppTheme.textSecondary.withOpacity(0.5)
                     : AppTheme.primaryColor.withOpacity(0.5),
               ),
             ],
@@ -382,17 +525,15 @@ class StatisticsScreenState extends State<StatisticsScreen> {
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.only(top: AppTheme.spacingM),
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
       decoration: BoxDecoration(
-        color: Theme.of(context).cardColor.withOpacity(0.8),
-        borderRadius: BorderRadius.circular(24),
-        border:
-            Border.all(color: Theme.of(context).dividerColor.withOpacity(0.1)),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Theme.of(context).shadowColor.withOpacity(0.05),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
@@ -400,34 +541,34 @@ class StatisticsScreenState extends State<StatisticsScreen> {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Container(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: AppTheme.primaryColor.withOpacity(0.1),
+              color: AppTheme.primaryColor.withOpacity(0.08),
               shape: BoxShape.circle,
             ),
             child: Icon(
               Icons.touch_app_rounded,
-              size: 32,
-              color: AppTheme.primaryColor.withOpacity(0.6),
+              size: 24,
+              color: AppTheme.primaryColor,
             ),
           ),
-          const SizedBox(width: 24),
+          const SizedBox(width: 16),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 '查看详细人情往来',
                 style: TextStyle(
-                  color: AppTheme.textPrimary.withOpacity(0.8),
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
+                  color: AppTheme.textPrimary,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 2),
               Text(
                 '点击上方图表分类展开详情',
                 style: TextStyle(
-                  color: AppTheme.textSecondary.withOpacity(0.5),
+                  color: AppTheme.textSecondary,
                   fontSize: 12,
                 ),
               ),

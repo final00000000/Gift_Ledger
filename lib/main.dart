@@ -208,18 +208,19 @@ class _MainNavigationState extends State<MainNavigation> {
               ),
             ),
           ),
-          if (_currentIndex == 0)
-            Positioned(
-              right: AppTheme.spacingL,
-              bottom: fabBottomOffset,
-              child: FloatingActionButton(
-                onPressed: _openAddRecord,
-                backgroundColor: AppTheme.primaryColor,
-                elevation: 4,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                child: const Icon(Icons.add_rounded, size: 28, color: Colors.white),
-              ),
-            ),
+          // 旧的 FAB 已隐藏，使用 dashboard_screen 中的 ExpandableFab
+          // if (_currentIndex == 0)
+          //   Positioned(
+          //     right: AppTheme.spacingL,
+          //     bottom: fabBottomOffset,
+          //     child: FloatingActionButton(
+          //       onPressed: _openAddRecord,
+          //       backgroundColor: AppTheme.primaryColor,
+          //       elevation: 4,
+          //       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          //       child: const Icon(Icons.add_rounded, size: 28, color: Colors.white),
+          //     ),
+          //   ),
         ],
       ),
     );
