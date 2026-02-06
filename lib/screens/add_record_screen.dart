@@ -203,24 +203,28 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
               constraints: const BoxConstraints(maxHeight: 250),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: AppTheme.primaryColor.withOpacity(0.1)),
+                border: Border.all(color: AppTheme.primaryColor.withValues(alpha: 0.1)),
                 boxShadow: [
-                  BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 20, offset: const Offset(0, 10))
+                  BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 20, offset: const Offset(0, 10))
                 ]
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(20),
-                child: ListView(
+                child: ListView.builder(
                   padding: EdgeInsets.zero,
                   shrinkWrap: true,
-                  children: _filteredGuests.map((g) => ListTile(
-                    leading: const Icon(Icons.person_search_rounded, color: AppTheme.primaryColor),
-                    title: Text(g.name, style: const TextStyle(fontWeight: FontWeight.w700)),
-                    subtitle: Text(g.relationship, style: const TextStyle(fontSize: 12)),
-                    onTap: () {
-                      _selectGuest(g);
-                    },
-                  )).toList(),
+                  itemCount: _filteredGuests.length,
+                  itemBuilder: (context, index) {
+                    final g = _filteredGuests[index];
+                    return ListTile(
+                      leading: const Icon(Icons.person_search_rounded, color: AppTheme.primaryColor),
+                      title: Text(g.name, style: const TextStyle(fontWeight: FontWeight.w700)),
+                      subtitle: Text(g.relationship, style: const TextStyle(fontSize: 12)),
+                      onTap: () {
+                        _selectGuest(g);
+                      },
+                    );
+                  },
                 ),
               ),
             ),
@@ -578,7 +582,7 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: accentColor.withOpacity(0.05),
+                  color: accentColor.withValues(alpha: 0.05),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Row(
@@ -654,7 +658,7 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: [
-              accentColor.withOpacity(0.08),
+              accentColor.withValues(alpha: 0.08),
               AppTheme.backgroundColor,
             ],
           ),
@@ -724,7 +728,7 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
         color: Colors.white,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 20,
             offset: const Offset(0, -4),
           ),
@@ -745,7 +749,7 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
             style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w900,
-              color: AppTheme.textSecondary.withOpacity(0.4),
+              color: AppTheme.textSecondary.withValues(alpha: 0.4),
               letterSpacing: 1.5,
             ),
           ),
@@ -765,7 +769,7 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
         borderRadius: BorderRadius.circular(32),
         boxShadow: [
           BoxShadow(
-            color: accentColor.withOpacity(0.12),
+            color: accentColor.withValues(alpha: 0.12),
             blurRadius: 30,
             offset: const Offset(0, 15),
           ),
@@ -794,7 +798,7 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
                   style: TextStyle(
                     fontSize: 24,
                     fontWeight: FontWeight.w900,
-                    color: accentColor.withOpacity(0.5),
+                    color: accentColor.withValues(alpha: 0.5),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -812,7 +816,7 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
           ),
           const SizedBox(height: 16),
           // 分割线
-          Divider(color: Colors.grey.withOpacity(0.1), height: 1),
+          Divider(color: Colors.grey.withValues(alpha: 0.1), height: 1),
           const SizedBox(height: 16),
           // 内部快捷选择器
           SingleChildScrollView(
@@ -835,12 +839,12 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
                     margin: const EdgeInsets.only(right: 12),
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     decoration: BoxDecoration(
-                      color: isSelected ? accentColor : accentColor.withOpacity(0.05),
+                      color: isSelected ? accentColor : accentColor.withValues(alpha: 0.05),
                       borderRadius: BorderRadius.circular(20),
                       boxShadow: isSelected
                           ? [
                               BoxShadow(
-                                color: accentColor.withOpacity(0.4),
+                                color: accentColor.withValues(alpha: 0.4),
                                 blurRadius: 8,
                                 offset: const Offset(0, 4),
                               ),
@@ -852,7 +856,7 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w700,
-                        color: isSelected ? Colors.white : accentColor.withOpacity(0.8),
+                        color: isSelected ? Colors.white : accentColor.withValues(alpha: 0.8),
                       ),
                     ),
                   ),
@@ -875,7 +879,7 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.03),
+            color: Colors.black.withValues(alpha: 0.03),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -903,7 +907,7 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
             borderRadius: BorderRadius.circular(15),
             boxShadow: isSelected ? [
               BoxShadow(
-                color: color.withOpacity(0.3),
+                color: color.withValues(alpha: 0.3),
                 blurRadius: 12,
                 offset: const Offset(0, 4),
               )
@@ -932,7 +936,7 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.02),
+            color: Colors.black.withValues(alpha: 0.02),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -999,7 +1003,7 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
           backgroundColor: accentColor,
           foregroundColor: Colors.white,
           elevation: 8,
-          shadowColor: accentColor.withOpacity(0.5),
+          shadowColor: accentColor.withValues(alpha: 0.5),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         ),
         child: _isSaving 
@@ -1024,7 +1028,7 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.02),
+            color: Colors.black.withValues(alpha: 0.02),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -1069,7 +1073,7 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
       },
       decoration: InputDecoration(
         hintText: hint,
-        hintStyle: TextStyle(color: AppTheme.textSecondary.withOpacity(0.5), fontWeight: FontWeight.w500),
+        hintStyle: TextStyle(color: AppTheme.textSecondary.withValues(alpha: 0.5), fontWeight: FontWeight.w500),
         prefixIcon: Icon(icon, color: AppTheme.primaryColor),
         border: InputBorder.none,
         contentPadding: const EdgeInsets.symmetric(vertical: 16),
@@ -1116,12 +1120,12 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(label, style: TextStyle(fontSize: 10, color: AppTheme.textSecondary.withOpacity(0.6), fontWeight: FontWeight.w800)),
+                  Text(label, style: TextStyle(fontSize: 10, color: AppTheme.textSecondary.withValues(alpha: 0.6), fontWeight: FontWeight.w800)),
                   Text(value, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: AppTheme.textPrimary)),
                 ],
               ),
             ),
-            Icon(Icons.keyboard_arrow_down_rounded, size: 20, color: AppTheme.textSecondary.withOpacity(0.4)),
+            Icon(Icons.keyboard_arrow_down_rounded, size: 20, color: AppTheme.textSecondary.withValues(alpha: 0.4)),
           ],
         ),
       ),
@@ -1168,7 +1172,7 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
                         color: isSelected ? AppTheme.primaryColor : AppTheme.backgroundColor,
                         borderRadius: BorderRadius.circular(16),
                         boxShadow: isSelected ? [
-                          BoxShadow(color: AppTheme.primaryColor.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 4))
+                          BoxShadow(color: AppTheme.primaryColor.withValues(alpha: 0.3), blurRadius: 8, offset: const Offset(0, 4))
                         ] : null,
                       ),
                       child: Text(
@@ -1200,7 +1204,7 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
         borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: Colors.black.withValues(alpha: 0.04),
             blurRadius: 20,
             offset: const Offset(0, -10),
           ),

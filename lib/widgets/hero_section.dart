@@ -38,7 +38,7 @@ class HeroSection extends StatelessWidget {
         borderRadius: BorderRadius.circular(AppTheme.radiusLarge),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: Colors.black.withValues(alpha: 0.04),
             blurRadius: 20,
             offset: const Offset(0, 4),
           ),
@@ -69,7 +69,7 @@ class HeroSection extends StatelessWidget {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           decoration: BoxDecoration(
-            color: AppTheme.primaryColor.withOpacity(0.08),
+            color: AppTheme.primaryColor.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(16),
           ),
           child: Row(
@@ -143,10 +143,10 @@ class HeroSection extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.04),
+          color: color.withValues(alpha: 0.04),
           borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
           border: Border.all(
-            color: color.withOpacity(0.08),
+            color: color.withValues(alpha: 0.08),
             width: 1,
           ),
         ),
@@ -158,7 +158,7 @@ class HeroSection extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(6),
                   decoration: BoxDecoration(
-                    color: color.withOpacity(0.1),
+                    color: color.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Icon(
@@ -180,7 +180,7 @@ class HeroSection extends StatelessWidget {
                   const Spacer(),
                   Icon(
                     Icons.chevron_right_rounded,
-                    color: AppTheme.textSecondary.withOpacity(0.5),
+                    color: AppTheme.textSecondary.withValues(alpha: 0.5),
                     size: 16,
                   ),
                 ],
@@ -221,7 +221,7 @@ class HeroSection extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.08),
+        color: color.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(10),
       ),
       child: Row(
@@ -229,14 +229,14 @@ class HeroSection extends StatelessWidget {
         children: [
           Icon(
             isPositive ? Icons.trending_up_rounded : Icons.trending_down_rounded,
-            color: color.withOpacity(0.8),
+            color: color.withValues(alpha: 0.8),
             size: 12,
           ),
           const SizedBox(width: 4),
           Text(
             '${isPositive ? '+' : ''}${trend.toStringAsFixed(1)}%',
             style: TextStyle(
-              color: color.withOpacity(0.8),
+              color: color.withValues(alpha: 0.8),
               fontSize: 11,
               fontWeight: FontWeight.w600,
             ),
@@ -265,7 +265,7 @@ class HeroSection extends StatelessWidget {
       height: 30,
       padding: const EdgeInsets.all(6),
       decoration: BoxDecoration(
-        color: AppTheme.primaryColor.withOpacity(0.05),
+        color: AppTheme.primaryColor.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(8),
       ),
       child: CustomPaint(
@@ -373,7 +373,7 @@ class _MiniChartPainter extends CustomPainter {
     if (data.isEmpty) return;
 
     final paint = Paint()
-      ..color = lineColor.withOpacity(0.6)
+      ..color = lineColor.withValues(alpha: 0.6)
       ..strokeWidth = 1.5
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round

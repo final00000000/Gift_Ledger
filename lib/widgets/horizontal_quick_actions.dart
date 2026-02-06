@@ -60,10 +60,10 @@ class _CapsuleActionButton extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           decoration: BoxDecoration(
-            color: item.color.withOpacity(0.08),
+            color: item.color.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
-              color: item.color.withOpacity(0.15),
+              color: item.color.withValues(alpha: 0.15),
               width: 1,
             ),
           ),

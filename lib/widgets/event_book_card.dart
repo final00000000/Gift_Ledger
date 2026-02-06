@@ -50,7 +50,7 @@ class EventBookCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: typeColor.withOpacity(0.08),
+            color: typeColor.withValues(alpha: 0.08),
             offset: const Offset(0, 6),
             blurRadius: 16,
           ),
@@ -73,7 +73,7 @@ class EventBookCard extends StatelessWidget {
                     width: 100,
                     height: 100,
                     decoration: BoxDecoration(
-                      color: typeColor.withOpacity(0.03),
+                      color: typeColor.withValues(alpha: 0.03),
                       shape: BoxShape.circle,
                     ),
                   ),
@@ -93,8 +93,8 @@ class EventBookCard extends StatelessWidget {
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
                             colors: [
-                              typeColor.withOpacity(0.15),
-                              typeColor.withOpacity(0.05),
+                              typeColor.withValues(alpha: 0.15),
+                              typeColor.withValues(alpha: 0.05),
                             ],
                           ),
                           borderRadius: BorderRadius.circular(16),
@@ -128,7 +128,7 @@ class EventBookCard extends StatelessWidget {
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                                   decoration: BoxDecoration(
-                                    color: typeColor.withOpacity(0.1),
+                                    color: typeColor.withValues(alpha: 0.1),
                                     borderRadius: BorderRadius.circular(6),
                                   ),
                                   child: Text(
@@ -157,7 +157,7 @@ class EventBookCard extends StatelessWidget {
                                 eventBook.note!,
                                 style: TextStyle(
                                   fontSize: 12,
-                                  color: AppTheme.textSecondary.withOpacity(0.7),
+                                  color: AppTheme.textSecondary.withValues(alpha: 0.7),
                                   fontStyle: FontStyle.italic,
                                 ),
                                 maxLines: 1,

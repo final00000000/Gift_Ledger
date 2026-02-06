@@ -90,14 +90,14 @@ class EmptyStateWidget extends StatelessWidget {
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                       colors: [
-                        AppTheme.primaryColor.withOpacity(0.1),
-                        AppTheme.accentColor.withOpacity(0.1),
+                        AppTheme.primaryColor.withValues(alpha: 0.1),
+                        AppTheme.accentColor.withValues(alpha: 0.1),
                       ],
                     ),
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
-                        color: AppTheme.primaryColor.withOpacity(0.1),
+                        color: AppTheme.primaryColor.withValues(alpha: 0.1),
                         blurRadius: 30,
                         spreadRadius: 5,
                       ),
@@ -113,7 +113,7 @@ class EmptyStateWidget extends StatelessWidget {
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           border: Border.all(
-                            color: AppTheme.primaryColor.withOpacity(0.2),
+                            color: AppTheme.primaryColor.withValues(alpha: 0.2),
                             width: 2,
                           ),
                         ),
@@ -313,7 +313,7 @@ class _GradientRingPainter extends CustomPainter {
 
     // 绘制底层圆环（淡色）
     final bgPaint = Paint()
-      ..color = AppTheme.primaryColor.withOpacity(0.1)
+      ..color = AppTheme.primaryColor.withValues(alpha: 0.1)
       ..strokeWidth = 6
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round;
@@ -350,7 +350,7 @@ class _GradientRingPainter extends CustomPainter {
 
     // 添加光晕效果
     final glowPaint = Paint()
-      ..color = AppTheme.primaryColor.withOpacity(0.3)
+      ..color = AppTheme.primaryColor.withValues(alpha: 0.3)
       ..strokeWidth = 12
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round

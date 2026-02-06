@@ -200,7 +200,7 @@ class _TimelineItemSkeleton extends StatelessWidget {
                 Expanded(
                   child: Container(
                     width: 2,
-                    color: Colors.grey.withOpacity(0.1),
+                    color: Colors.grey.withValues(alpha: 0.1),
                   ),
                 ),
               ],
@@ -217,7 +217,7 @@ class _TimelineItemSkeleton extends StatelessWidget {
               decoration: BoxDecoration(
                 color: Theme.of(context).cardColor,
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.grey.withOpacity(0.1)),
+                border: Border.all(color: Colors.grey.withValues(alpha: 0.1)),
               ),
               child: Row(
                 children: [

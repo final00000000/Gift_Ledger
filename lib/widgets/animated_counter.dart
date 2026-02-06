@@ -37,9 +37,12 @@ class AnimatedCounter extends StatelessWidget {
         } else {
           displayText = animatedValue.toStringAsFixed(decimalPlaces);
         }
-        return Text(
-          '$prefix$displayText$suffix',
-          style: style,
+        // 使用 RepaintBoundary 隔离动画重绘
+        return RepaintBoundary(
+          child: Text(
+            '$prefix$displayText$suffix',
+            style: style,
+          ),
         );
       },
     );

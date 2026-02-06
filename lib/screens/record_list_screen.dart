@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'dart:async';
 import '../models/gift.dart';
 import '../models/guest.dart';
 import '../services/storage_service.dart';
@@ -7,7 +8,7 @@ import '../theme/app_theme.dart';
 import '../utils/lunar_utils.dart';
 import 'add_record_screen.dart';
 import '../services/security_service.dart';
-import '../widgets/pin_code_dialog.dart';
+import '../utils/security_unlock.dart';
 import '../widgets/privacy_aware_text.dart';
 
 class RecordListScreen extends StatefulWidget {
@@ -28,13 +29,11 @@ class _RecordListScreenState extends State<RecordListScreen>
   final SecurityService _securityService = SecurityService();
   final TextEditingController _searchController = TextEditingController();
 
-  /// 验证安全锁，返回是否通过验证
-  Future<bool> _verifySecurityLock() async {
-    if (!_securityService.isUnlocked.value) {
-      return await PinCodeDialog.show(context);
-    }
-    return true;
-  }
+  // 搜索防抖定时器
+  Timer? _debounceTimer;
+
+  /// 验证安全锁，返回是否通过验证（统一入口）
+  Future<bool> _verifySecurityLock() => _securityService.ensureUnlocked(context);
 
   List<Gift> _allGifts = [];
   List<Gift> _filteredGifts = [];
@@ -70,6 +69,7 @@ class _RecordListScreenState extends State<RecordListScreen>
     _db.removeListener(_onDataChanged);
     _animationController.dispose();
     _searchController.dispose();
+    _debounceTimer?.cancel(); // 取消防抖定时器
     super.dispose();
   }
 
@@ -101,9 +101,17 @@ class _RecordListScreenState extends State<RecordListScreen>
   }
 
   void _onSearchChanged() {
-    setState(() {
-      _searchQuery = _searchController.text.trim().toLowerCase();
-      _filterGifts();
+    // 取消之前的定时器
+    _debounceTimer?.cancel();
+
+    // 设置新的防抖定时器（300ms）
+    _debounceTimer = Timer(const Duration(milliseconds: 300), () {
+      if (mounted) {
+        setState(() {
+          _searchQuery = _searchController.text.trim().toLowerCase();
+          _filterGifts();
+        });
+      }
     });
   }
 
@@ -171,7 +179,7 @@ class _RecordListScreenState extends State<RecordListScreen>
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
-                color: _getAccentColor().withOpacity(0.1),
+                color: _getAccentColor().withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Text(
@@ -187,7 +195,7 @@ class _RecordListScreenState extends State<RecordListScreen>
             Text(
               '总计 ',
               style: TextStyle(
-                color: AppTheme.textSecondary.withOpacity(0.7),
+                color: AppTheme.textSecondary.withValues(alpha: 0.7),
                 fontSize: 13,
               ),
             ),
@@ -255,7 +263,7 @@ class _RecordListScreenState extends State<RecordListScreen>
             borderRadius: BorderRadius.circular(16),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.05),
+                color: Colors.black.withValues(alpha: 0.05),
                 blurRadius: 10,
                 offset: const Offset(0, 4),
               ),
@@ -320,7 +328,7 @@ class _RecordListScreenState extends State<RecordListScreen>
                   color: isSelected ? activeColor : Colors.transparent,
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
-                    color: isSelected ? activeColor : AppTheme.textSecondary.withOpacity(0.2),
+                    color: isSelected ? activeColor : AppTheme.textSecondary.withValues(alpha: 0.2),
                     width: 1.5,
                   ),
                 ),
@@ -357,13 +365,13 @@ class _RecordListScreenState extends State<RecordListScreen>
               Icon(
                 Icons.search_off_rounded,
                 size: 64,
-                color: AppTheme.textSecondary.withOpacity(0.3),
+                color: AppTheme.textSecondary.withValues(alpha: 0.3),
               ),
               const SizedBox(height: 16),
               Text(
                 _searchQuery.isNotEmpty ? '未找到匹配记录' : '暂无记录',
                 style: TextStyle(
-                  color: AppTheme.textSecondary.withOpacity(0.6),
+                  color: AppTheme.textSecondary.withValues(alpha: 0.6),
                   fontSize: 16,
                 ),
               ),
@@ -396,7 +404,7 @@ class _RecordListScreenState extends State<RecordListScreen>
                     borderRadius: BorderRadius.circular(12),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.02),
+                        color: Colors.black.withValues(alpha: 0.02),
                         blurRadius: 4,
                         offset: const Offset(0, 2),
                       ),
@@ -408,7 +416,7 @@ class _RecordListScreenState extends State<RecordListScreen>
                       Icon(
                         Icons.calendar_month_rounded,
                         size: 16,
-                        color: _getAccentColor().withOpacity(0.6),
+                        color: _getAccentColor().withValues(alpha: 0.6),
                       ),
                       const SizedBox(width: 8),
                       Text(
@@ -430,8 +438,8 @@ class _RecordListScreenState extends State<RecordListScreen>
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         colors: [
-                          _getAccentColor().withOpacity(0.2),
-                          _getAccentColor().withOpacity(0),
+                          _getAccentColor().withValues(alpha: 0.2),
+                          _getAccentColor().withValues(alpha: 0),
                         ],
                       ),
                     ),
@@ -498,7 +506,7 @@ class _RecordListScreenState extends State<RecordListScreen>
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.02),
+            color: Colors.black.withValues(alpha: 0.02),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -525,8 +533,8 @@ class _RecordListScreenState extends State<RecordListScreen>
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                       colors: [
-                        itemColor.withOpacity(0.12),
-                        itemColor.withOpacity(0.04),
+                        itemColor.withValues(alpha: 0.12),
+                        itemColor.withValues(alpha: 0.04),
                       ],
                     ),
                     borderRadius: BorderRadius.circular(18),
@@ -558,7 +566,7 @@ class _RecordListScreenState extends State<RecordListScreen>
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
-                              color: itemColor.withOpacity(0.06),
+                              color: itemColor.withValues(alpha: 0.06),
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: Text(
@@ -566,7 +574,7 @@ class _RecordListScreenState extends State<RecordListScreen>
                               style: TextStyle(
                                 fontSize: 11,
                                 fontWeight: FontWeight.bold,
-                                color: itemColor.withOpacity(0.8),
+                                color: itemColor.withValues(alpha: 0.8),
                               ),
                             ),
                           ),
@@ -575,7 +583,7 @@ class _RecordListScreenState extends State<RecordListScreen>
                             solarDate,
                             style: TextStyle(
                               fontSize: 12,
-                              color: AppTheme.textSecondary.withOpacity(0.5),
+                              color: AppTheme.textSecondary.withValues(alpha: 0.5),
                               fontWeight: FontWeight.w500,
                             ),
                           ),
@@ -584,7 +592,7 @@ class _RecordListScreenState extends State<RecordListScreen>
                               ' · $lunarDate',
                               style: TextStyle(
                                 fontSize: 11,
-                                color: AppTheme.textSecondary.withOpacity(0.4),
+                                color: AppTheme.textSecondary.withValues(alpha: 0.4),
                               ),
                             ),
                           ],
@@ -647,7 +655,7 @@ class _RecordListScreenState extends State<RecordListScreen>
                 height: 4,
                 margin: const EdgeInsets.only(bottom: 20),
                 decoration: BoxDecoration(
-                  color: Colors.grey.withOpacity(0.3),
+                  color: Colors.grey.withValues(alpha: 0.3),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -659,7 +667,7 @@ class _RecordListScreenState extends State<RecordListScreen>
                   width: 48,
                   height: 48,
                   decoration: BoxDecoration(
-                    color: itemColor.withOpacity(0.1),
+                    color: itemColor.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(
@@ -843,7 +851,7 @@ class _RecordListScreenState extends State<RecordListScreen>
       spans.add(TextSpan(
         text: text.substring(matchIndex, matchIndex + _searchQuery.length),
         style: baseStyle.copyWith(
-          backgroundColor: _getAccentColor().withOpacity(0.2),
+          backgroundColor: _getAccentColor().withValues(alpha: 0.2),
           fontWeight: FontWeight.w900,
         ),
       ));

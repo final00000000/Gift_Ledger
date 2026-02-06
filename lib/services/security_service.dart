@@ -26,29 +26,42 @@ class SecurityService extends ChangeNotifier with WidgetsBindingObserver {
   static const _keyHintQuestion = 'sec_hint_question';  // 密码提示问题
   static const _keyHintAnswerHash = 'sec_hint_answer';  // 答案哈希
   static const _keyHintSalt = 'sec_hint_salt';          // 答案盐值
-  static const _lockTimeout = Duration(minutes: 1);
+  // 后台超时自动上锁的阈值：30s（更符合“快速离开就锁”的安全预期）
+  static const _lockTimeout = Duration(seconds: 30);
   static const int _maxAttempts = 5;
 
   // 运行时状态
   DateTime? _pausedTimestamp;
   bool _isInitialized = false;
+  Future<void>? _initFuture;
+
+  // 内存缓存（避免频繁读取 FlutterSecureStorage）
+  String? _cachedSecurityMode;
+  DateTime? _cacheExpiry;
+  static const _cacheDuration = Duration(seconds: 30);
 
   // 安全模式枚举
   static const modeNone = 'none';
   static const modeFortress = 'fortress'; // 启动即锁
   static const modeInvisible = 'invisible'; // 隐形模式
 
-  Future<void> init() async {
+  Future<void> init() {
+    // 多页面/多组件可能并发触发 init：缓存 Future，避免重复 addObserver 与状态抖动。
+    _initFuture ??= _initInternal();
+    return _initFuture!;
+  }
+
+  Future<void> _initInternal() async {
     if (_isInitialized) return;
-    
+
     // 监听 App 生命周期
     WidgetsBinding.instance.addObserver(this);
-    
+
     // 初始化锁定状态
     final mode = await getSecurityMode();
     isUnlocked.value = (mode == modeNone);
     notifyListeners();
-    
+
     _isInitialized = true;
   }
 
@@ -74,6 +87,13 @@ class SecurityService extends ChangeNotifier with WidgetsBindingObserver {
     final mode = await getSecurityMode();
     if (mode == modeNone) return;
 
+    // 堡垒模式：从后台切回时强制上锁（不依赖超时）
+    if (mode == modeFortress) {
+      lock();
+      _pausedTimestamp = null;
+      return;
+    }
+
     if (_pausedTimestamp != null) {
       final difference = DateTime.now().difference(_pausedTimestamp!);
       if (difference > _lockTimeout) {
@@ -86,9 +106,23 @@ class SecurityService extends ChangeNotifier with WidgetsBindingObserver {
 
   // --- 核心 API ---
 
-  /// 获取当前安全模式
+  /// 获取当前安全模式（带内存缓存）
   Future<String> getSecurityMode() async {
-    return await _storage.read(key: _keyMode) ?? modeNone;
+    // 检查缓存是否有效
+    if (_cachedSecurityMode != null &&
+        _cacheExpiry != null &&
+        DateTime.now().isBefore(_cacheExpiry!)) {
+      return _cachedSecurityMode!;
+    }
+
+    // 缓存失效，从存储读取
+    final mode = await _storage.read(key: _keyMode) ?? modeNone;
+
+    // 更新缓存
+    _cachedSecurityMode = mode;
+    _cacheExpiry = DateTime.now().add(_cacheDuration);
+
+    return mode;
   }
 
   /// 获取剩余尝试次数
@@ -96,6 +130,12 @@ class SecurityService extends ChangeNotifier with WidgetsBindingObserver {
     final countStr = await _storage.read(key: _keyFailCount) ?? '0';
     final count = int.tryParse(countStr) ?? 0;
     return _maxAttempts - count;
+  }
+
+  /// 清除锁定状态与错误计数（不影响 PIN/提示问题/安全模式）
+  Future<void> clearLockout() async {
+    await _storage.delete(key: _keyFailCount);
+    await _storage.delete(key: _keyLockUntil);
   }
 
   /// 获取锁定截止时间（如果没被锁定则返回 null）
@@ -112,9 +152,15 @@ class SecurityService extends ChangeNotifier with WidgetsBindingObserver {
   /// 设置安全模式
   Future<void> setSecurityMode(String mode) async {
     await _storage.write(key: _keyMode, value: mode);
+
+    // 清除缓存，确保下次读取最新值
+    _cachedSecurityMode = null;
+    _cacheExpiry = null;
+
     if (mode == modeNone) {
-      // 关闭安全锁时，清除所有密码和提示数据
-      await clearAllSecurityData();
+      // 关闭安全锁时，只清除失败计数和锁定时间，保留密码和提示数据
+      await _storage.delete(key: _keyFailCount);
+      await _storage.delete(key: _keyLockUntil);
       isUnlocked.value = true;
       notifyListeners();
     } else {
@@ -161,7 +207,8 @@ class SecurityService extends ChangeNotifier with WidgetsBindingObserver {
         
         if (newCount >= _maxAttempts) {
           // 达到上限：设置锁定时间
-          final lockTime = DateTime.now().add(const Duration(minutes: 1));
+          // 输错次数达到上限后的锁定时长：30s
+          final lockTime = DateTime.now().add(const Duration(seconds: 30));
           await _storage.write(key: _keyLockUntil, value: lockTime.toIso8601String());
           await _storage.delete(key: _keyFailCount); // 锁定后重置计数
         } else {

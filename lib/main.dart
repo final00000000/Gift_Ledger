@@ -10,15 +10,16 @@ import 'screens/settings_screen.dart';
 import 'services/notification_service.dart';
 import 'services/security_service.dart';
 import 'services/storage_service.dart';
+import 'services/config_service.dart';
 
 // 条件导入 - 仅桌面端需要初始化
 import 'services/db_init_native.dart' if (dart.library.js_interop) 'services/db_init_stub.dart' as db_init;
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 初始化数据库 (仅桌面端) - 同步操作，必须在 runApp 前完成
-  db_init.initializeDatabase();
+  // 预加载配置服务（一次性加载所有 SharedPreferences 到内存）
+  await ConfigService().init();
 
   // 设置系统UI样式 - 沉浸式状态栏，与应用背景色一致
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
@@ -29,7 +30,7 @@ void main() {
     systemNavigationBarIconBrightness: Brightness.dark,
   ));
 
-  // 立即启动 UI - 直接进入主页
+  // 立即启动 UI - 直接进入主页（不等待数据库初始化）
   runApp(const GiftMoneyTrackerApp());
 
   // 后台初始化非关键服务（不阻塞 UI）
@@ -39,10 +40,16 @@ void main() {
 /// 后台初始化服务，完全不阻塞 UI
 void _initServicesInBackground() {
   Future.microtask(() async {
+    // 并行初始化所有后台服务
     await Future.wait([
+      // 数据库初始化（移到后台，不阻塞 UI 启动）
+      Future(() => db_init.initializeDatabase()),
       NotificationService().initialize(),
       SecurityService().init(),
     ]);
+
+    // 数据库初始化完成后，预热常用数据
+    await StorageService().warmup();
   });
 }
 
@@ -53,9 +60,9 @@ class GiftMoneyTrackerApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        // 使用 ChangeNotifierProvider.value 因为服务是单例，已经创建
-        ChangeNotifierProvider.value(value: StorageService()),
-        ChangeNotifierProvider.value(value: SecurityService()),
+        // 使用 ChangeNotifierProvider 延迟创建，避免启动时立即实例化
+        ChangeNotifierProvider(create: (_) => StorageService()),
+        ChangeNotifierProvider(create: (_) => SecurityService()),
       ],
       child: MaterialApp(
         title: '随礼记',
@@ -131,12 +138,12 @@ class _MainNavigationState extends State<MainNavigation> {
     return Container(
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.85),
+        color: Colors.white.withValues(alpha: 0.85),
         borderRadius: BorderRadius.circular(40),
         border: Border.all(color: Colors.white, width: 0.5),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.08),
+            color: Colors.black.withValues(alpha: 0.08),
             blurRadius: 24,
             offset: const Offset(0, 12),
           ),

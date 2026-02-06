@@ -7,7 +7,7 @@ import '../widgets/custom_toast.dart';
 
 class PinCodeDialog extends StatefulWidget {
   final bool isSettingPin; // 是否为设置模式
-  final Function(String)? onPinSet; // 设置成功回调
+  final Future<void> Function(String)? onPinSet; // 设置成功回调（需要 await，确保落盘完成）
   final String? title;
 
   const PinCodeDialog({
@@ -59,6 +59,11 @@ class _PinCodeDialogState extends State<PinCodeDialog> with SingleTickerProvider
   DateTime? _lockUntil;
   Timer? _countdownTimer;
   String _timerText = '';
+
+  bool get _isLockedOutForPinEntry {
+    // 锁定仅针对“验证旧密码”的入口，不应影响设置/重置新密码流程。
+    return _lockUntil != null && !widget.isSettingPin && _mode == _DialogMode.enterPin;
+  }
 
   @override
   void initState() {
@@ -129,7 +134,7 @@ class _PinCodeDialogState extends State<PinCodeDialog> with SingleTickerProvider
   }
 
   void _onDigitPressed(String digit) {
-    if (_lockUntil != null) return; // 锁定中禁止输入
+    if (_isLockedOutForPinEntry) return; // 锁定中禁止输入（仅限验证旧密码）
 
     if (_pin.length < 6) {
       setState(() {
@@ -190,13 +195,36 @@ class _PinCodeDialogState extends State<PinCodeDialog> with SingleTickerProvider
   }
 
   Future<void> _handleVerifyLogic() async {
+    // 先检查是否有密码设置
+    final hasPin = await _securityService.hasPin();
+    if (!hasPin) {
+      // 没有密码，提示用户先设置密码
+      if (mounted) {
+        CustomToast.show(context, '请先设置安全密码', isError: true);
+        Navigator.pop(context, false);
+      }
+      return;
+    }
+
     final isValid = await _securityService.verifyPin(_pin);
     if (isValid) {
       HapticFeedback.mediumImpact();
       if (mounted) Navigator.pop(context, true);
     } else {
-      await _checkLockoutStatus(); // 更新剩余次数和锁定状态
-      _triggerError();
+      // 密码验证失败后，SecurityService 已经更新了失败次数
+      // 现在获取最新的锁定状态和剩余次数
+      await _checkLockoutStatus();
+
+      if (mounted) {
+        // 显示剩余次数提示（_checkLockoutStatus 已更新 _remainingAttempts 和 _lockUntil）
+        if (_lockUntil != null) {
+          CustomToast.show(context, '密码错误次数过多，请稍后重试', isError: true);
+        } else {
+          CustomToast.show(context, '密码错误，还剩 $_remainingAttempts 次机会', isError: true);
+        }
+        // _triggerError 会清空 _pin 和触发动画，无需重复 setState
+        _triggerError();
+      }
     }
   }
 
@@ -222,6 +250,10 @@ class _PinCodeDialogState extends State<PinCodeDialog> with SingleTickerProvider
     if (_pin == _firstPin) {
       // 两次一致，保存新密码
       await _securityService.setPin(_pin);
+      // 真正设置新密码后，才清除锁定状态与错误计数。
+      await _securityService.clearLockout();
+      // 重置成功后视为已通过验证，直接解锁，避免立刻又要求输入新密码。
+      _securityService.unlock();
       HapticFeedback.mediumImpact();
       if (mounted) {
         CustomToast.show(context, '密码重置成功');
@@ -253,9 +285,19 @@ class _PinCodeDialogState extends State<PinCodeDialog> with SingleTickerProvider
       return;
     }
 
-    // 保存密码
-    if (widget.onPinSet != null) {
-      widget.onPinSet!(_firstPin!);
+    // 保存密码（必须 await，避免对话框关闭后立刻验证却读不到刚写入的 PIN）
+    try {
+      if (widget.onPinSet != null) {
+        await widget.onPinSet!(_firstPin!);
+      } else {
+        // 兜底：不传回调时默认写入到 SecurityService
+        await _securityService.setPin(_firstPin!);
+      }
+    } catch (e) {
+      if (mounted) {
+        CustomToast.show(context, '保存密码失败，请重试', isError: true);
+      }
+      return;
     }
 
     // 保存提示问题和答案
@@ -293,12 +335,12 @@ class _PinCodeDialogState extends State<PinCodeDialog> with SingleTickerProvider
 
     final isValid = await _securityService.verifySecurityAnswer(answer);
     if (isValid) {
-      // 答案正确，重置密码
-      await _securityService.resetPassword();
+      // 答案正确：进入重置流程，但不要在此处清除“输错 5 次”的锁定记录。
+      // 需求：只有当用户真正设置了新密码后，才清除锁定状态；若用户中途关闭，倒计时仍应生效。
       // 清除本地锁定状态和倒计时
       _countdownTimer?.cancel();
       if (mounted) {
-        CustomToast.show(context, '验证成功，请设置新密码');
+        CustomToast.show(context, '验证成功，请设置新密码（取消仍需原密码）');
         setState(() {
           _mode = _DialogMode.resetPin;
           _pin = '';
@@ -314,12 +356,20 @@ class _PinCodeDialogState extends State<PinCodeDialog> with SingleTickerProvider
     }
   }
 
+  @override
+  void didUpdateWidget(PinCodeDialog oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 当对话框重新打开时，刷新锁定状态
+    if (!widget.isSettingPin) {
+      _checkLockoutStatus();
+    }
+  }
+
   void _triggerError() {
     HapticFeedback.heavyImpact();
     _shakeController.forward().then((_) => _shakeController.reset());
-    if (_mode == _DialogMode.enterPin && !widget.isSettingPin) {
-      CustomToast.show(context, '密码错误', isError: true);
-    }
+    // 不在这里显示 Toast，由调用方根据具体情况显示
+    // 只清空 PIN
     setState(() {
       _pin = '';
     });
@@ -401,7 +451,7 @@ class _PinCodeDialogState extends State<PinCodeDialog> with SingleTickerProvider
     return Column(
       children: [
         // 动态提示语（剩余次数或锁定倒计时）
-        if (_lockUntil != null)
+        if (_isLockedOutForPinEntry)
           Text(
             '锁定中，请在 $_timerText 后重试',
             style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
@@ -552,7 +602,7 @@ class _PinCodeDialogState extends State<PinCodeDialog> with SingleTickerProvider
             width: double.infinity,
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: AppTheme.primaryColor.withOpacity(0.08),
+              color: AppTheme.primaryColor.withValues(alpha: 0.08),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Column(
@@ -613,7 +663,7 @@ class _PinCodeDialogState extends State<PinCodeDialog> with SingleTickerProvider
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    side: BorderSide(color: AppTheme.textSecondary.withOpacity(0.3)),
+                    side: BorderSide(color: AppTheme.textSecondary.withValues(alpha: 0.3)),
                   ),
                   child: Text(
                     '返回',
@@ -653,7 +703,7 @@ class _PinCodeDialogState extends State<PinCodeDialog> with SingleTickerProvider
 
   Widget _buildNumpad() {
     return Opacity(
-      opacity: _lockUntil != null ? 0.3 : 1.0,
+      opacity: _isLockedOutForPinEntry ? 0.3 : 1.0,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 32),
         child: Column(

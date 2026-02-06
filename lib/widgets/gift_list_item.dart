@@ -37,10 +37,10 @@ class GiftListItem extends StatelessWidget {
           decoration: BoxDecoration(
             color: Theme.of(context).cardColor,
             borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
-            border: Border.all(color: Colors.black.withOpacity(0.04)), // Visibility Border
+            border: Border.all(color: Colors.black.withValues(alpha: 0.04)), // Visibility Border
             boxShadow: [
               BoxShadow(
-                color: Theme.of(context).shadowColor.withOpacity(0.04),
+                color: Theme.of(context).shadowColor.withValues(alpha: 0.04),
                 blurRadius: 8,
                 offset: const Offset(0, 2),
               ),
@@ -62,12 +62,12 @@ class GiftListItem extends StatelessWidget {
                       gradient: LinearGradient(
                         colors: gift.isReceived
                             ? [
-                                AppTheme.primaryColor.withOpacity(0.15),
-                                AppTheme.primaryColor.withOpacity(0.05),
+                                AppTheme.primaryColor.withValues(alpha: 0.15),
+                                AppTheme.primaryColor.withValues(alpha: 0.05),
                               ]
                             : [
-                                AppTheme.accentColor.withOpacity(0.25),
-                                AppTheme.accentColor.withOpacity(0.10),
+                                AppTheme.accentColor.withValues(alpha: 0.25),
+                                AppTheme.accentColor.withValues(alpha: 0.10),
                               ],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
@@ -101,7 +101,7 @@ class GiftListItem extends StatelessWidget {
                                 vertical: 2,
                               ),
                               decoration: BoxDecoration(
-                                color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                                color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
                                 borderRadius: BorderRadius.circular(4),
                               ),
                               child: Text(
@@ -121,8 +121,8 @@ class GiftListItem extends StatelessWidget {
                               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                               decoration: BoxDecoration(
                                 color: gift.isReceived 
-                                    ? AppTheme.primaryColor.withOpacity(0.12) 
-                                    : AppTheme.accentColor.withOpacity(0.12),
+                                    ? AppTheme.primaryColor.withValues(alpha: 0.12) 
+                                    : AppTheme.accentColor.withValues(alpha: 0.12),
                                 borderRadius: BorderRadius.circular(4),
                               ),
                               child: Text(
@@ -141,7 +141,7 @@ class GiftListItem extends StatelessWidget {
                               child: Text(
                                 '${dateFormat.format(gift.date)} (${LunarUtils.getLunarDateString(gift.date)})',
                                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                  color: Theme.of(context).textTheme.bodySmall?.color?.withOpacity(0.7),
+                                  color: Theme.of(context).textTheme.bodySmall?.color?.withValues(alpha: 0.7),
                                 ),
                                 overflow: TextOverflow.ellipsis,
                               ),

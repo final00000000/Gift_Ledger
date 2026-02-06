@@ -85,7 +85,7 @@ class ExportDialogs {
             Container(
               padding: const EdgeInsets.all(AppTheme.spacingM),
               decoration: BoxDecoration(
-                color: AppTheme.warningColor.withOpacity(0.1),
+                color: AppTheme.warningColor.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: const Text(
@@ -353,7 +353,7 @@ class ExportDialogs {
       leading: Container(
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-          color: AppTheme.primaryColor.withOpacity(0.1),
+          color: AppTheme.primaryColor.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(8),
         ),
         child: Icon(icon, color: AppTheme.primaryColor),

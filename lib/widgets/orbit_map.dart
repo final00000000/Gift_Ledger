@@ -43,6 +43,15 @@ class _OrbitMapState extends State<OrbitMap> with SingleTickerProviderStateMixin
     super.dispose();
   }
 
+  @override
+  void didUpdateWidget(OrbitMap oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 当组件更新时，确保动画继续运行
+    if (!_pulseController.isAnimating) {
+      _pulseController.repeat();
+    }
+  }
+
   IconData _getCategoryIcon(String category) {
     switch (category) {
       case '婚礼': return Icons.favorite_rounded;
@@ -60,19 +69,22 @@ class _OrbitMapState extends State<OrbitMap> with SingleTickerProviderStateMixin
     // 计算总流动金额 (received + given)
     double flowAmount = widget.gifts.fold(0, (sum, g) => sum + g.amount);
 
-    return SizedBox(
-      height: 400,
-      width: double.infinity,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
+    // 使用 TickerMode 控制动画，当组件不可见时自动停止
+    return TickerMode(
+      enabled: TickerMode.of(context),
+      child: SizedBox(
+        height: 400,
+        width: double.infinity,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
           // 轨道圈 (Background Rings)
           Container(
             width: 160, // 80 * 2
             height: 160,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              border: Border.all(color: Colors.white.withOpacity(0.05), width: 1),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.05), width: 1),
             ),
           ),
           Container(
@@ -80,7 +92,7 @@ class _OrbitMapState extends State<OrbitMap> with SingleTickerProviderStateMixin
             height: 240,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              border: Border.all(color: Colors.white.withOpacity(0.05), width: 1),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.05), width: 1),
             ),
           ),
 
@@ -113,7 +125,7 @@ class _OrbitMapState extends State<OrbitMap> with SingleTickerProviderStateMixin
                         height: 100 + (_pulseController.value * 20),
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: const Color(0xFF6366F1).withOpacity(0.1 * (1 - _pulseController.value)),
+                          color: const Color(0xFF6366F1).withValues(alpha: 0.1 * (1 - _pulseController.value)),
                         ),
                       );
                     },
@@ -126,12 +138,12 @@ class _OrbitMapState extends State<OrbitMap> with SingleTickerProviderStateMixin
                         color: Theme.of(context).cardColor,
                         shape: BoxShape.circle,
                         border: Border.all(
-                          color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
+                          color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.5),
                           width: 2,
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
+                            color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.3),
                             blurRadius: 40,
                             spreadRadius: 0,
                           ),
@@ -156,15 +168,15 @@ class _OrbitMapState extends State<OrbitMap> with SingleTickerProviderStateMixin
                         decoration: BoxDecoration(
                           color: Theme.of(context).colorScheme.surface, // Adaptive surface
                           shape: BoxShape.circle,
-                          border: Border.all(color: Theme.of(context).dividerColor.withOpacity(0.1)),
+                          border: Border.all(color: Theme.of(context).dividerColor.withValues(alpha: 0.1)),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.1),
+                              color: Colors.black.withValues(alpha: 0.1),
                               blurRadius: 4,
                             )
                           ]
                         ),
-                        child: Icon(Icons.close, size: 16, color: Theme.of(context).iconTheme.color?.withOpacity(0.7)),
+                        child: Icon(Icons.close, size: 16, color: Theme.of(context).iconTheme.color?.withValues(alpha: 0.7)),
                       ),
                     ),
                   ),
@@ -174,7 +186,7 @@ class _OrbitMapState extends State<OrbitMap> with SingleTickerProviderStateMixin
               Text(
                 '${widget.category}往来',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).textTheme.bodySmall?.color?.withOpacity(0.5),
+                  color: Theme.of(context).textTheme.bodySmall?.color?.withValues(alpha: 0.5),
                 ),
               ),
               const SizedBox(height: 4),
@@ -190,7 +202,7 @@ class _OrbitMapState extends State<OrbitMap> with SingleTickerProviderStateMixin
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                 decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                  color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
@@ -252,7 +264,7 @@ class _OrbitMapState extends State<OrbitMap> with SingleTickerProviderStateMixin
                               borderRadius: BorderRadius.circular(8),
                               boxShadow: [
                                 BoxShadow(
-                                  color: Colors.black.withOpacity(0.2),
+                                  color: Colors.black.withValues(alpha: 0.2),
                                   blurRadius: 10,
                                 ),
                               ],
@@ -282,14 +294,14 @@ class _OrbitMapState extends State<OrbitMap> with SingleTickerProviderStateMixin
                             ),
                             boxShadow: [
                               BoxShadow(
-                                color: color.withOpacity(0.2),
+                                color: color.withValues(alpha: 0.2),
                                 blurRadius: 10,
                               ),
                             ],
                           ),
                           child: Icon(
                             Icons.person_outline_rounded,
-                            color: color.withOpacity(0.8),
+                            color: color.withValues(alpha: 0.8),
                             size: 20,
                           ),
                         ),
@@ -331,6 +343,7 @@ class _OrbitMapState extends State<OrbitMap> with SingleTickerProviderStateMixin
         })(),
         ],
       ),
+    ),
     );
   }
 }
@@ -368,7 +381,7 @@ class OrbitLinesPainter extends CustomPainter {
       final rect = Rect.fromPoints(center, Offset(endX, endY));
       paint.shader = LinearGradient(
         colors: [
-           gift.isReceived ? const Color(0xFF6366F1) : const Color(0xFFF43F5E).withOpacity(0.3),
+           gift.isReceived ? const Color(0xFF6366F1) : const Color(0xFFF43F5E).withValues(alpha: 0.3),
            Colors.transparent,
         ],
         stops: const [0.0, 1.0],
@@ -379,8 +392,8 @@ class OrbitLinesPainter extends CustomPainter {
       // Simple solid line with opacity for now better visual control
       paint.shader = null;
       paint.color = gift.isReceived 
-          ? const Color(0xFF6366F1).withOpacity(0.3)
-          : const Color(0xFFF43F5E).withOpacity(0.15);
+          ? const Color(0xFF6366F1).withValues(alpha: 0.3)
+          : const Color(0xFFF43F5E).withValues(alpha: 0.15);
 
       canvas.drawLine(center, Offset(endX, endY), paint);
     }

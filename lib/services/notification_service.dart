@@ -3,8 +3,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tz_data;
-import 'package:shared_preferences/shared_preferences.dart';
 import 'storage_service.dart';
+import 'config_service.dart';
 
 /// 本地推送通知服务
 class NotificationService {
@@ -14,12 +14,17 @@ class NotificationService {
 
   final FlutterLocalNotificationsPlugin _notifications = FlutterLocalNotificationsPlugin();
   final StorageService _storage = StorageService();
-  
+  final ConfigService _config = ConfigService();
+
   static const String _enabledKey = 'notifications_enabled';
   static const int _monthlyReminderId = 1001;
 
-  /// 初始化通知服务
-  Future<void> initialize() async {
+  bool _isInitialized = false;
+
+  /// 延迟初始化通知服务（只在首次使用时初始化）
+  Future<void> _ensureInitialized() async {
+    if (_isInitialized) return;
+
     // Web 和 Windows 不支持本地推送
     if (kIsWeb) return;
     if (!kIsWeb && (Platform.isWindows || Platform.isLinux)) {
@@ -47,12 +52,21 @@ class NotificationService {
       onDidReceiveNotificationResponse: _onNotificationTapped,
     );
 
+    _isInitialized = true;
+
     // 延迟检查通知状态，不阻塞启动
     Future.microtask(() async {
       if (await isEnabled()) {
         await scheduleMonthlyReminder();
       }
     });
+  }
+
+  /// 初始化通知服务（保留兼容性，但改为延迟初始化）
+  Future<void> initialize() async {
+    // 不再在启动时初始化，改为延迟到首次使用
+    // 这个方法保留是为了兼容性，但实际不做任何事
+    return;
   }
 
   /// 处理通知点击
@@ -63,6 +77,7 @@ class NotificationService {
 
   /// 请求通知权限
   Future<bool> requestPermission() async {
+    await _ensureInitialized(); // 延迟初始化
     if (kIsWeb) return false;
     if (Platform.isWindows || Platform.isLinux) return false;
 
@@ -86,14 +101,13 @@ class NotificationService {
 
   /// 检查是否已启用通知
   Future<bool> isEnabled() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(_enabledKey) ?? false;
+    return _config.getBool(_enabledKey) ?? false;
   }
 
   /// 设置通知开关
   Future<void> setEnabled(bool enabled) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_enabledKey, enabled);
+    await _ensureInitialized(); // 延迟初始化
+    await _config.setBool(_enabledKey, enabled);
 
     if (enabled) {
       final granted = await requestPermission();
@@ -107,6 +121,7 @@ class NotificationService {
 
   /// 调度每月提醒（每月1号上午10点）
   Future<void> scheduleMonthlyReminder() async {
+    await _ensureInitialized(); // 延迟初始化
     if (kIsWeb) return;
     if (Platform.isWindows || Platform.isLinux) return;
 
@@ -158,6 +173,7 @@ class NotificationService {
 
   /// 立即发送通知（测试用）
   Future<void> showTestNotification() async {
+    await _ensureInitialized(); // 延迟初始化
     if (kIsWeb) return;
 
     // 获取未还Top3

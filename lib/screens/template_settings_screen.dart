@@ -147,7 +147,7 @@ class _TemplateSettingsScreenState extends State<TemplateSettingsScreen> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: AppTheme.primaryColor.withOpacity(0.05),
+                color: AppTheme.primaryColor.withValues(alpha: 0.05),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Column(
@@ -193,7 +193,7 @@ class _TemplateSettingsScreenState extends State<TemplateSettingsScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
             decoration: BoxDecoration(
-              color: AppTheme.primaryColor.withOpacity(0.1),
+              color: AppTheme.primaryColor.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(4),
             ),
             child: Text(
@@ -275,7 +275,7 @@ class _TemplateSettingsScreenState extends State<TemplateSettingsScreen> {
           Icon(
             Icons.chat_bubble_outline_rounded,
             size: 64,
-            color: AppTheme.textSecondary.withOpacity(0.3),
+            color: AppTheme.textSecondary.withValues(alpha: 0.3),
           ),
           const SizedBox(height: 16),
           Text(
@@ -291,7 +291,7 @@ class _TemplateSettingsScreenState extends State<TemplateSettingsScreen> {
             '点击下方按钮添加话术模板',
             style: TextStyle(
               fontSize: 14,
-              color: AppTheme.textSecondary.withOpacity(0.6),
+              color: AppTheme.textSecondary.withValues(alpha: 0.6),
             ),
           ),
         ],
@@ -308,10 +308,10 @@ class _TemplateSettingsScreenState extends State<TemplateSettingsScreen> {
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.black.withOpacity(0.04)),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.04)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -325,7 +325,7 @@ class _TemplateSettingsScreenState extends State<TemplateSettingsScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  color: AppTheme.primaryColor.withOpacity(0.1),
+                  color: AppTheme.primaryColor.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
@@ -379,7 +379,7 @@ class _TemplateSettingsScreenState extends State<TemplateSettingsScreen> {
         color: Theme.of(context).cardColor,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 10,
             offset: const Offset(0, -4),
           ),
@@ -395,7 +395,7 @@ class _TemplateSettingsScreenState extends State<TemplateSettingsScreen> {
                   '最多只能添加5个模板',
                   style: TextStyle(
                     fontSize: 12,
-                    color: AppTheme.textSecondary.withOpacity(0.6),
+                    color: AppTheme.textSecondary.withValues(alpha: 0.6),
                   ),
                 ),
               ),
@@ -408,7 +408,7 @@ class _TemplateSettingsScreenState extends State<TemplateSettingsScreen> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppTheme.primaryColor,
                   foregroundColor: Colors.white,
-                  disabledBackgroundColor: AppTheme.textSecondary.withOpacity(0.2),
+                  disabledBackgroundColor: AppTheme.textSecondary.withValues(alpha: 0.2),
                   disabledForegroundColor: AppTheme.textSecondary,
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   shape: RoundedRectangleBorder(

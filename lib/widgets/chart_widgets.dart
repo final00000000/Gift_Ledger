@@ -116,7 +116,9 @@ class _SymmetryBarChartState extends State<SymmetryBarChart> {
     final maxValue = maxReceived > maxGiven ? maxReceived : maxGiven;
     final safeMax = maxValue == 0 ? 1.0 : maxValue;
 
-    return Container(
+    // 使用 RepaintBoundary 隔离图表重绘
+    return RepaintBoundary(
+      child: Container(
       padding: const EdgeInsets.all(AppTheme.spacingL),
       decoration: BoxDecoration(
         // Glassmorphism / Card effect
@@ -124,13 +126,13 @@ class _SymmetryBarChartState extends State<SymmetryBarChart> {
         borderRadius: BorderRadius.circular(32),
         boxShadow: [
           BoxShadow(
-            color: Theme.of(context).shadowColor.withOpacity(0.08),
+            color: Theme.of(context).shadowColor.withValues(alpha: 0.08),
             blurRadius: 40,
             offset: const Offset(0, 20),
           ),
         ],
         border: Border.all(
-          color: Theme.of(context).dividerColor.withOpacity(0.1),
+          color: Theme.of(context).dividerColor.withValues(alpha: 0.1),
         ),
       ),
       child: Column(
@@ -156,7 +158,7 @@ class _SymmetryBarChartState extends State<SymmetryBarChart> {
                       Icon(
                         Icons.auto_awesome_rounded,
                         size: 16,
-                        color: AppTheme.primaryColor.withOpacity(0.6),
+                        color: AppTheme.primaryColor.withValues(alpha: 0.6),
                       ),
                     ],
                   ),
@@ -164,7 +166,7 @@ class _SymmetryBarChartState extends State<SymmetryBarChart> {
                   Text(
                     'Category Overview',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: AppTheme.textSecondary.withOpacity(0.5),
+                      color: AppTheme.textSecondary.withValues(alpha: 0.5),
                       fontSize: 10,
                       fontWeight: FontWeight.w600,
                       letterSpacing: 1.5,
@@ -179,7 +181,7 @@ class _SymmetryBarChartState extends State<SymmetryBarChart> {
                   child: Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: AppTheme.textSecondary.withOpacity(0.1),
+                      color: AppTheme.textSecondary.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Icon(
@@ -219,7 +221,7 @@ class _SymmetryBarChartState extends State<SymmetryBarChart> {
                       top: 80,
                       child: Container(
                         height: 1,
-                        color: Colors.grey.withOpacity(0.15),
+                        color: Colors.grey.withValues(alpha: 0.15),
                       ),
                     ),
                     // 柱状图
@@ -268,7 +270,7 @@ class _SymmetryBarChartState extends State<SymmetryBarChart> {
             decoration: BoxDecoration(
               border: Border(
                 top: BorderSide(
-                  color: Colors.grey.withOpacity(0.1),
+                  color: Colors.grey.withValues(alpha: 0.1),
                   width: 1,
                 ),
               ),
@@ -286,11 +288,8 @@ class _SymmetryBarChartState extends State<SymmetryBarChart> {
                       widget.selectedCategory == item.name ? null : item.name,
                     );
                   },
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 300),
-                    transform: Matrix4.identity()
-                      ..scale(isSelected ? 1.1 : 1.0), // 稍微减小缩放比例以适应文字
-                    transformAlignment: Alignment.center,
+                  child: Transform.scale(
+                    scale: isSelected ? 1.1 : 1.0,
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -314,7 +313,7 @@ class _SymmetryBarChartState extends State<SymmetryBarChart> {
                               fontWeight: isSelected ? FontWeight.w900 : FontWeight.w600,
                               color: isSelected 
                                   ? getCategoryColor(item.name) 
-                                  : AppTheme.textSecondary.withOpacity(0.6),
+                                  : AppTheme.textSecondary.withValues(alpha: 0.6),
                             ),
                           ),
                         ),
@@ -326,6 +325,7 @@ class _SymmetryBarChartState extends State<SymmetryBarChart> {
             ),
           ),
         ],
+      ),
       ),
     );
   }
@@ -364,14 +364,14 @@ class _SymmetryBarChartState extends State<SymmetryBarChart> {
                     begin: Alignment.bottomCenter,
                     end: Alignment.topCenter,
                     colors: [
-                      const Color(0xFF6366F1).withOpacity(0.6),
+                      const Color(0xFF6366F1).withValues(alpha: 0.6),
                       const Color(0xFF818CF8),
                     ],
                   ),
                   boxShadow: isSelected
                       ? [
                           BoxShadow(
-                            color: const Color(0xFF6366F1).withOpacity(0.4),
+                            color: const Color(0xFF6366F1).withValues(alpha: 0.4),
                             blurRadius: 12,
                             offset: const Offset(0, -4),
                           ),
@@ -397,14 +397,14 @@ class _SymmetryBarChartState extends State<SymmetryBarChart> {
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: [
-                      const Color(0xFFF43F5E).withOpacity(0.6),
+                      const Color(0xFFF43F5E).withValues(alpha: 0.6),
                       const Color(0xFFE11D48),
                     ],
                   ),
                   boxShadow: isSelected
                       ? [
                           BoxShadow(
-                            color: const Color(0xFFE11D48).withOpacity(0.4),
+                            color: const Color(0xFFE11D48).withValues(alpha: 0.4),
                             blurRadius: 12,
                             offset: const Offset(0, 4),
                           ),
@@ -437,7 +437,7 @@ class _SymmetryBarChartState extends State<SymmetryBarChart> {
           style: TextStyle(
             fontSize: 10,
             fontWeight: FontWeight.w600,
-            color: AppTheme.textSecondary.withOpacity(0.7),
+            color: AppTheme.textSecondary.withValues(alpha: 0.7),
           ),
         ),
       ],
@@ -462,7 +462,9 @@ class BalanceBarChart extends StatelessWidget {
     final maxAmount = (received > sent ? received : sent);
     final safeMax = maxAmount == 0 ? 1.0 : maxAmount;
 
-    return Container(
+    // 使用 RepaintBoundary 隔离图表重绘
+    return RepaintBoundary(
+      child: Container(
       padding: const EdgeInsets.symmetric(
         horizontal: AppTheme.spacingL,
         vertical: AppTheme.spacingL,
@@ -473,12 +475,12 @@ class BalanceBarChart extends StatelessWidget {
         // 多层软阴影，营造高级悬浮感
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.02),
+            color: Colors.black.withValues(alpha: 0.02),
             blurRadius: 20,
             offset: const Offset(0, 10),
           ),
           BoxShadow(
-            color: Colors.black.withOpacity(0.01),
+            color: Colors.black.withValues(alpha: 0.01),
             blurRadius: 5,
             offset: const Offset(0, 2),
           ),
@@ -505,7 +507,7 @@ class BalanceBarChart extends StatelessWidget {
                   Text(
                     '最近数据概览',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: AppTheme.textSecondary.withOpacity(0.6),
+                      color: AppTheme.textSecondary.withValues(alpha: 0.6),
                     ),
                   ),
                 ],
@@ -514,13 +516,13 @@ class BalanceBarChart extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
-                    color: AppTheme.primaryColor.withOpacity(0.05),
+                    color: AppTheme.primaryColor.withValues(alpha: 0.05),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Row(
                     children: [
                       Icon(Icons.account_balance_wallet_rounded, 
-                        size: 14, color: AppTheme.primaryColor.withOpacity(0.7)),
+                        size: 14, color: AppTheme.primaryColor.withValues(alpha: 0.7)),
                       const SizedBox(width: 6),
                       Text(
                         '¥${total.toStringAsFixed(0)}',
@@ -546,7 +548,7 @@ class BalanceBarChart extends StatelessWidget {
                   children: List.generate(4, (index) => 
                     Container(
                       height: 1,
-                      color: Colors.grey.withOpacity(0.05),
+                      color: Colors.grey.withValues(alpha: 0.05),
                     ),
                   ),
                 ),
@@ -579,6 +581,7 @@ class BalanceBarChart extends StatelessWidget {
             ],
           ),
         ],
+      ),
       ),
     );
   }
@@ -621,14 +624,14 @@ class BalanceBarChart extends StatelessWidget {
                   begin: Alignment.bottomCenter,
                   end: Alignment.topCenter,
                   colors: [
-                    color.withOpacity(0.8),
+                    color.withValues(alpha: 0.8),
                     color,
                     topColor,
                   ],
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: color.withOpacity(0.4),
+                    color: color.withValues(alpha: 0.4),
                     blurRadius: 12,
                     offset: const Offset(0, 6),
                   ),
@@ -648,8 +651,8 @@ class BalanceBarChart extends StatelessWidget {
                           begin: Alignment.topCenter,
                           end: Alignment.bottomCenter,
                           colors: [
-                            Colors.white.withOpacity(0.35),
-                            Colors.white.withOpacity(0),
+                            Colors.white.withValues(alpha: 0.35),
+                            Colors.white.withValues(alpha: 0),
                           ],
                         ),
                         borderRadius: BorderRadius.circular(20),
@@ -666,13 +669,13 @@ class BalanceBarChart extends StatelessWidget {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
           decoration: BoxDecoration(
-            color: color.withOpacity(0.08),
+            color: color.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(12),
           ),
           child: Text(
             label,
             style: TextStyle(
-              color: color.withOpacity(0.9),
+              color: color.withValues(alpha: 0.9),
               fontWeight: FontWeight.w800,
               fontSize: 12,
             ),
@@ -713,7 +716,7 @@ class StatListItem extends StatelessWidget {
         // 极其轻微的底部阴影或边框
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.01),
+            color: Colors.black.withValues(alpha: 0.01),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -731,8 +734,8 @@ class StatListItem extends StatelessWidget {
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [
-                  color.withOpacity(0.12),
-                  color.withOpacity(0.04),
+                  color.withValues(alpha: 0.12),
+                  color.withValues(alpha: 0.04),
                 ],
               ),
               borderRadius: BorderRadius.circular(18),
@@ -792,9 +795,9 @@ class StatListItem extends StatelessWidget {
                               decoration: BoxDecoration(
                                 gradient: LinearGradient(
                                   colors: [
-                                    color.withOpacity(0.5),
+                                    color.withValues(alpha: 0.5),
                                     color,
-                                    color.withOpacity(0.8),
+                                    color.withValues(alpha: 0.8),
                                   ],
                                   begin: Alignment.centerLeft,
                                   end: Alignment.centerRight,
@@ -802,7 +805,7 @@ class StatListItem extends StatelessWidget {
                                 borderRadius: BorderRadius.circular(8),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: color.withOpacity(0.3),
+                                    color: color.withValues(alpha: 0.3),
                                     blurRadius: 6,
                                     offset: const Offset(0, 2),
                                   ),
@@ -818,11 +821,11 @@ class StatListItem extends StatelessWidget {
                                     child: Container(
                                       width: 6,
                                       decoration: BoxDecoration(
-                                        color: Colors.white.withOpacity(0.6),
+                                        color: Colors.white.withValues(alpha: 0.6),
                                         shape: BoxShape.circle,
                                         boxShadow: [
                                           BoxShadow(
-                                            color: Colors.white.withOpacity(0.8),
+                                            color: Colors.white.withValues(alpha: 0.8),
                                             blurRadius: 4,
                                           ),
                                         ],

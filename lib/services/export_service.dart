@@ -32,21 +32,12 @@ class ExportService {
 
   Future<String?> exportToJson() async {
     try {
-      final guests = await _storage.getAllGuests();
-      final gifts = await _storage.getAllGifts();
+      // 使用 compute 在后台 Isolate 中处理导出
+      final result = await compute(_exportToJsonInBackground, null);
 
-      final Map<String, dynamic> data = {
-        'version': '1.0',
-        'exportDate': DateTime.now().toIso8601String(),
-        'guests': guests.map((g) => g.toMap()).toList(),
-        'gifts': gifts.map((g) => g.toMap()).toList(),
-      };
-
-      final jsonString = const JsonEncoder.withIndent('  ').convert(data);
       final fileName = '随礼记_备份_${_dateFormat.format(DateTime.now())}.json';
-
       return await _saveFile(
-        bytes: utf8.encode(jsonString),
+        bytes: utf8.encode(result),
         fileName: fileName,
       );
     } catch (e) {
@@ -54,40 +45,29 @@ class ExportService {
     }
   }
 
+  // 在后台 Isolate 中执行的导出逻辑
+  static Future<String> _exportToJsonInBackground(_) async {
+    final storage = StorageService();
+    final guests = await storage.getAllGuests();
+    final gifts = await storage.getAllGifts();
+
+    final Map<String, dynamic> data = {
+      'version': '1.0',
+      'exportDate': DateTime.now().toIso8601String(),
+      'guests': guests.map((g) => g.toMap()).toList(),
+      'gifts': gifts.map((g) => g.toMap()).toList(),
+    };
+
+    return const JsonEncoder.withIndent('  ').convert(data);
+  }
+
   Future<String?> exportToExcel() async {
     try {
-      final guests = await _storage.getAllGuests();
-      final gifts = await _storage.getAllGifts();
-      
-      final Map<int, Guest> guestMap = {for (var g in guests) g.id!: g};
-
-      var excel = Excel.createExcel();
-      Sheet sheet = excel['Sheet1'];
-
-      List<String> headers = ['姓名', '关系', '类型', '事由', '金额', '日期', '备注'];
-      sheet.appendRow(headers.map((h) => TextCellValue(h)).toList());
-
-      for (var gift in gifts) {
-        final guest = guestMap[gift.guestId];
-        final guestName = guest?.name ?? '未知';
-        final relationship = guest?.relationship ?? '其他';
-        
-        List<CellValue> row = [
-          TextCellValue(guestName),
-          TextCellValue(relationship),
-          TextCellValue(gift.isReceived ? '收礼' : '送礼'),
-          TextCellValue(gift.eventType),
-          DoubleCellValue(gift.amount),
-          TextCellValue(_dateFormat.format(gift.date)),
-          TextCellValue(gift.note ?? ''),
-        ];
-        sheet.appendRow(row);
-      }
-      
-      final fileName = '随礼记_数据_${_dateFormat.format(DateTime.now())}.xlsx';
-      final fileBytes = excel.encode();
+      // 使用 compute 在后台 Isolate 中处理导出
+      final fileBytes = await compute(_exportToExcelInBackground, null);
 
       if (fileBytes != null) {
+        final fileName = '随礼记_数据_${_dateFormat.format(DateTime.now())}.xlsx';
         return await _saveFile(
           bytes: fileBytes,
           fileName: fileName,
@@ -97,6 +77,41 @@ class ExportService {
     } catch (e) {
       throw Exception('导出 Excel 失败: $e');
     }
+  }
+
+  // 在后台 Isolate 中执行的 Excel 导出逻辑
+  static Future<List<int>?> _exportToExcelInBackground(_) async {
+    final storage = StorageService();
+    final guests = await storage.getAllGuests();
+    final gifts = await storage.getAllGifts();
+
+    final Map<int, Guest> guestMap = {for (var g in guests) g.id!: g};
+    final dateFormat = DateFormat('yyyy-MM-dd');
+
+    var excel = Excel.createExcel();
+    Sheet sheet = excel['Sheet1'];
+
+    List<String> headers = ['姓名', '关系', '类型', '事由', '金额', '日期', '备注'];
+    sheet.appendRow(headers.map((h) => TextCellValue(h)).toList());
+
+    for (var gift in gifts) {
+      final guest = guestMap[gift.guestId];
+      final guestName = guest?.name ?? '未知';
+      final relationship = guest?.relationship ?? '其他';
+
+      List<CellValue> row = [
+        TextCellValue(guestName),
+        TextCellValue(relationship),
+        TextCellValue(gift.isReceived ? '收礼' : '送礼'),
+        TextCellValue(gift.eventType),
+        DoubleCellValue(gift.amount),
+        TextCellValue(dateFormat.format(gift.date)),
+        TextCellValue(gift.note ?? ''),
+      ];
+      sheet.appendRow(row);
+    }
+
+    return excel.encode();
   }
 
   /// 导出待处理清单到Excel

@@ -8,7 +8,7 @@ import '../theme/app_theme.dart';
 import '../widgets/chart_widgets.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/orbit_map.dart';
-import '../widgets/pin_code_dialog.dart';
+import '../utils/security_unlock.dart';
 import '../widgets/insight_card.dart';
 
 class StatisticsScreen extends StatefulWidget {
@@ -28,6 +28,10 @@ class StatisticsScreenState extends State<StatisticsScreen> {
   List<int> _availableYears = [];
   int? _selectedYear;
   bool _isLoading = true;
+
+  // 缓存年份筛选结果，避免重复计算
+  List<Gift>? _cachedYearFilteredGifts;
+  int? _cachedYear;
 
   // 智能洞察数据
   double? _receivedTrend;
@@ -76,6 +80,9 @@ class StatisticsScreenState extends State<StatisticsScreen> {
           _availableYears = years;
           _selectedYear = selectedYear;
           _isLoading = false;
+          // 清除缓存，因为数据已更新
+          _cachedYearFilteredGifts = null;
+          _cachedYear = null;
         });
         // 计算洞察数据
         _calculateInsights(_allGifts, _guestMap);
@@ -271,8 +278,8 @@ class StatisticsScreenState extends State<StatisticsScreen> {
                                 margin: const EdgeInsets.only(right: 8),
                                 decoration: BoxDecoration(
                                   color: isUnlocked
-                                      ? AppTheme.primaryColor.withOpacity(0.08)
-                                      : Colors.grey.withOpacity(0.06),
+                                      ? AppTheme.primaryColor.withValues(alpha: 0.08)
+                                      : Colors.grey.withValues(alpha: 0.06),
                                   borderRadius: BorderRadius.circular(10),
                                 ),
                                 child: IconButton(
@@ -286,7 +293,7 @@ class StatisticsScreenState extends State<StatisticsScreen> {
                                         ),
                                       );
                                     } else {
-                                      await PinCodeDialog.show(context);
+                                      await _securityService.ensureUnlocked(context);
                                     }
                                   },
                                   icon: Icon(
@@ -350,8 +357,21 @@ class StatisticsScreenState extends State<StatisticsScreen> {
   }
 
   List<Gift> get _yearFilteredGifts {
-    if (_selectedYear == null) return _allGifts;
-    return _allGifts.where((g) => g.date.year == _selectedYear).toList();
+    // 检查缓存是否有效
+    if (_cachedYear == _selectedYear && _cachedYearFilteredGifts != null) {
+      return _cachedYearFilteredGifts!;
+    }
+
+    // 缓存失效，重新计算
+    final filtered = _selectedYear == null
+        ? _allGifts
+        : _allGifts.where((g) => g.date.year == _selectedYear).toList();
+
+    // 更新缓存
+    _cachedYear = _selectedYear;
+    _cachedYearFilteredGifts = filtered;
+
+    return filtered;
   }
 
   Widget _buildYearSelector() {
@@ -363,7 +383,7 @@ class StatisticsScreenState extends State<StatisticsScreen> {
     return Theme(
       data: Theme.of(context).copyWith(
         hoverColor: Colors.transparent,
-        splashColor: AppTheme.primaryColor.withOpacity(0.05),
+        splashColor: AppTheme.primaryColor.withValues(alpha: 0.05),
         highlightColor: Colors.transparent,
       ),
       child: PopupMenuButton<int>(
@@ -378,12 +398,12 @@ class StatisticsScreenState extends State<StatisticsScreen> {
         tooltip: '选择年份',
         offset: const Offset(0, 48),
         elevation: 4,
-        shadowColor: Colors.black.withOpacity(0.05),
+        shadowColor: Colors.black.withValues(alpha: 0.05),
         // 强制菜单宽度与按钮一致
         constraints: const BoxConstraints.tightFor(width: selectorWidth),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
-          side: BorderSide(color: AppTheme.textSecondary.withOpacity(0.1)),
+          side: BorderSide(color: AppTheme.textSecondary.withValues(alpha: 0.1)),
         ),
         itemBuilder: (context) => [
           PopupMenuItem<int>(
@@ -444,12 +464,12 @@ class StatisticsScreenState extends State<StatisticsScreen> {
           width: selectorWidth, // 固定按钮宽度
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
-            color: _selectedYear == null ? Colors.white : AppTheme.primaryColor.withOpacity(0.05),
+            color: _selectedYear == null ? Colors.white : AppTheme.primaryColor.withValues(alpha: 0.05),
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
               color: _selectedYear == null
-                  ? AppTheme.textSecondary.withOpacity(0.1)
-                  : AppTheme.primaryColor.withOpacity(0.15),
+                  ? AppTheme.textSecondary.withValues(alpha: 0.1)
+                  : AppTheme.primaryColor.withValues(alpha: 0.15),
               width: 1,
             ),
           ),
@@ -479,8 +499,8 @@ class StatisticsScreenState extends State<StatisticsScreen> {
                 Icons.keyboard_arrow_down_rounded,
                 size: 18,
                 color: _selectedYear == null
-                    ? AppTheme.textSecondary.withOpacity(0.5)
-                    : AppTheme.primaryColor.withOpacity(0.5),
+                    ? AppTheme.textSecondary.withValues(alpha: 0.5)
+                    : AppTheme.primaryColor.withValues(alpha: 0.5),
               ),
             ],
           ),
@@ -502,7 +522,7 @@ class StatisticsScreenState extends State<StatisticsScreen> {
         borderRadius: BorderRadius.circular(32),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.2),
+            color: Colors.black.withValues(alpha: 0.2),
             blurRadius: 20,
             offset: const Offset(0, 10),
           ),
@@ -531,7 +551,7 @@ class StatisticsScreenState extends State<StatisticsScreen> {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: Colors.black.withValues(alpha: 0.04),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
@@ -543,7 +563,7 @@ class StatisticsScreenState extends State<StatisticsScreen> {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: AppTheme.primaryColor.withOpacity(0.08),
+              color: AppTheme.primaryColor.withValues(alpha: 0.08),
               shape: BoxShape.circle,
             ),
             child: Icon(

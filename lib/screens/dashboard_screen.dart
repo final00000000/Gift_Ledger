@@ -12,7 +12,7 @@ import '../widgets/hero_section.dart';
 import '../widgets/horizontal_quick_actions.dart';
 import '../widgets/grouped_timeline.dart';
 import '../services/security_service.dart';
-import '../widgets/pin_code_dialog.dart';
+import '../utils/security_unlock.dart';
 import 'add_record_screen.dart';
 import 'record_list_screen.dart';
 import 'pending_list_screen.dart';
@@ -45,13 +45,8 @@ class DashboardScreenState extends State<DashboardScreen>
   late Animation<double> _gridAnimation;
   late Animation<double> _listAnimation;
 
-  /// 验证安全锁，返回是否通过验证
-  Future<bool> _verifySecurityLock() async {
-    if (!_securityService.isUnlocked.value) {
-      return await PinCodeDialog.show(context);
-    }
-    return true;
-  }
+  /// 验证安全锁，返回是否通过验证（统一入口，避免各页面重复实现）
+  Future<bool> _verifySecurityLock() => _securityService.ensureUnlocked(context);
 
   @override
   void initState() {
@@ -64,7 +59,7 @@ class DashboardScreenState extends State<DashboardScreen>
   void _initAnimations() {
     _animationController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1400),
+      duration: const Duration(milliseconds: 800), // 从 1400ms 优化到 800ms
     );
 
     // 分层动画 - 头部 → 英雄区 → 洞察卡片 → 网格 → 列表
@@ -214,7 +209,7 @@ class DashboardScreenState extends State<DashboardScreen>
                 height: 4,
                 margin: const EdgeInsets.only(bottom: 20),
                 decoration: BoxDecoration(
-                  color: Colors.grey.withOpacity(0.3),
+                  color: Colors.grey.withValues(alpha: 0.3),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -225,7 +220,7 @@ class DashboardScreenState extends State<DashboardScreen>
                   width: 48,
                   height: 48,
                   decoration: BoxDecoration(
-                    color: itemColor.withOpacity(0.1),
+                    color: itemColor.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(
@@ -518,7 +513,7 @@ class DashboardScreenState extends State<DashboardScreen>
                     },
                     child: HorizontalQuickActions(
                       items: _buildHorizontalActions(),
-                      animationDelay: const Duration(milliseconds: 400),
+                      animationDelay: const Duration(milliseconds: 200), // 从 400ms 优化到 200ms
                     ),
                   ),
                 ),
@@ -621,7 +616,7 @@ class DashboardScreenState extends State<DashboardScreen>
                     child: GroupedTimeline(
                       gifts: _recentGifts,
                       guestMap: _guestMap,
-                      animationDelay: const Duration(milliseconds: 600),
+                      animationDelay: const Duration(milliseconds: 300), // 从 600ms 优化到 300ms
                       onTap: (gift, guest) async {
                         if (!await _verifySecurityLock()) return;
                         _showGiftDetail(gift, guest);
@@ -642,6 +637,7 @@ class DashboardScreenState extends State<DashboardScreen>
                         }
                       },
                       onDelete: (gift) async {
+                        if (!await _verifySecurityLock()) return;
                         await _db.deleteGift(gift.id!);
                         _loadData();
                         if (mounted) {
@@ -713,8 +709,8 @@ class DashboardScreenState extends State<DashboardScreen>
               return Container(
                 decoration: BoxDecoration(
                   color: isUnlocked
-                      ? AppTheme.primaryColor.withOpacity(0.08)
-                      : Colors.grey.withOpacity(0.06),
+                      ? AppTheme.primaryColor.withValues(alpha: 0.08)
+                      : Colors.grey.withValues(alpha: 0.06),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: IconButton(
@@ -733,7 +729,7 @@ class DashboardScreenState extends State<DashboardScreen>
                         ),
                       );
                     } else {
-                      await PinCodeDialog.show(context);
+                      await _securityService.ensureUnlocked(context);
                     }
                   },
                   icon: Icon(

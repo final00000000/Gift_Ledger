@@ -50,6 +50,12 @@ GITHUB_GUIDE.md
 CONTRIBUTING.md
 tmpclaude-*
 nul
+android/local.properties
+android/key.properties
+**/*.keystore
+**/*.jks
+.env
+.env.*
 
 # AI tools and artifacts
 .gemini/

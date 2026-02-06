@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/services.dart';
 import '../theme/app_theme.dart';
 import '../widgets/custom_toast.dart';
 import '../widgets/export_dialogs.dart';
@@ -24,6 +25,8 @@ class SettingsScreenState extends State<SettingsScreen> {
   bool _statsIncludeEventBooks = true;
   bool _eventBooksEnabled = true;
   String _securityMode = SecurityService.modeNone;
+  bool _isLoading = true; // 添加加载状态
+  String _appVersion = '';
   final TemplateService _templateService = TemplateService();
   final NotificationService _notificationService = NotificationService();
   final StorageService _db = StorageService();
@@ -34,6 +37,7 @@ class SettingsScreenState extends State<SettingsScreen> {
     super.initState();
     // 监听 StorageService 变化，自动刷新设置
     _db.addListener(_onDataChanged);
+    _loadAppInfo();
     _loadSettings();
   }
 
@@ -41,6 +45,24 @@ class SettingsScreenState extends State<SettingsScreen> {
   void _onDataChanged() {
     if (mounted) {
       _loadSettings();
+    }
+  }
+
+  Future<void> _loadAppInfo() async {
+    try {
+      final text = await rootBundle.loadString('pubspec.yaml');
+      final match = RegExp(r'^version:\s*([^\s]+)', multiLine: true).firstMatch(text);
+      final raw = match?.group(1) ?? '';
+      final semver = raw.split('+').first;
+      if (!mounted) return;
+      setState(() {
+        _appVersion = semver;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _appVersion = '';
+      });
     }
   }
 
@@ -62,14 +84,17 @@ class SettingsScreenState extends State<SettingsScreen> {
     ]);
 
     final prefs = results[0] as SharedPreferences;
-    setState(() {
-      _defaultIsReceived = prefs.getBool('default_is_received') ?? true;
-      _useFuzzyAmount = results[1] as bool;
-      _notificationsEnabled = results[2] as bool;
-      _statsIncludeEventBooks = results[3] as bool;
-      _eventBooksEnabled = results[4] as bool;
-      _securityMode = results[5] as String;
-    });
+    if (mounted) {
+      setState(() {
+        _defaultIsReceived = prefs.getBool('default_is_received') ?? true;
+        _useFuzzyAmount = results[1] as bool;
+        _notificationsEnabled = results[2] as bool;
+        _statsIncludeEventBooks = results[3] as bool;
+        _eventBooksEnabled = results[4] as bool;
+        _securityMode = results[5] as String;
+        _isLoading = false; // 标记加载完成
+      });
+    }
   }
 
   Future<void> _saveSetting(bool value) async {
@@ -324,13 +349,16 @@ class SettingsScreenState extends State<SettingsScreen> {
                           leading: Container(
                             padding: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
-                              color: AppTheme.primaryColor.withOpacity(0.1),
+                              color: AppTheme.primaryColor.withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: const Icon(Icons.info_outline_rounded, color: AppTheme.primaryColor, size: 20),
                           ),
                           title: const Text('随礼记', style: TextStyle(fontWeight: FontWeight.w600)),
-                          trailing: const Text('v1.2.5', style: TextStyle(color: AppTheme.textSecondary)),
+                          trailing: Text(
+                            _appVersion.isEmpty ? 'v--' : 'v$_appVersion',
+                            style: const TextStyle(color: AppTheme.textSecondary),
+                          ),
                         ),
                       ],
                     ),
@@ -414,13 +442,13 @@ class SettingsScreenState extends State<SettingsScreen> {
       },
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-        color: isSelected ? color.withOpacity(0.05) : null,
+        color: isSelected ? color.withValues(alpha: 0.05) : null,
         child: Row(
           children: [
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
+                color: color.withValues(alpha: 0.1),
                 shape: BoxShape.circle,
               ),
               child: Icon(icon, color: color),
@@ -448,7 +476,7 @@ class SettingsScreenState extends State<SettingsScreen> {
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.black.withOpacity(0.04)),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.04)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -460,7 +488,7 @@ class SettingsScreenState extends State<SettingsScreen> {
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w700,
-                color: AppTheme.textSecondary.withOpacity(0.7),
+                color: AppTheme.textSecondary.withValues(alpha: 0.7),
               ),
             ),
           ),
@@ -483,7 +511,7 @@ class SettingsScreenState extends State<SettingsScreen> {
       leading: Container(
         padding: const EdgeInsets.all(6),
         decoration: BoxDecoration(
-          color: iconColor.withOpacity(0.1),
+          color: iconColor.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(8),
         ),
         child: Icon(icon, color: iconColor, size: 18),
@@ -493,7 +521,7 @@ class SettingsScreenState extends State<SettingsScreen> {
       trailing: Switch.adaptive(
         value: value,
         onChanged: onChanged,
-        activeColor: AppTheme.primaryColor,
+        activeTrackColor: AppTheme.primaryColor,
       ),
       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
       visualDensity: VisualDensity.compact,
@@ -511,7 +539,7 @@ class SettingsScreenState extends State<SettingsScreen> {
       leading: Container(
         padding: const EdgeInsets.all(6),
         decoration: BoxDecoration(
-          color: iconColor.withOpacity(0.1),
+          color: iconColor.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(8),
         ),
         child: Icon(icon, color: iconColor, size: 18),

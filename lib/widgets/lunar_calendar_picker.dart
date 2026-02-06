@@ -277,7 +277,7 @@ class _LunarCalendarPickerState extends State<LunarCalendarPicker> {
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
-                        color: AppTheme.textSecondary.withOpacity(0.6),
+                        color: AppTheme.textSecondary.withValues(alpha: 0.6),
                       ),
                     ),
                   ),
@@ -323,7 +323,7 @@ class _LunarCalendarPickerState extends State<LunarCalendarPicker> {
                       color: isSelected
                           ? AppTheme.primaryColor
                           : isToday
-                              ? AppTheme.primaryColor.withOpacity(0.1)
+                              ? AppTheme.primaryColor.withValues(alpha: 0.1)
                               : Colors.transparent,
                       borderRadius: BorderRadius.circular(8),
                     ),
@@ -349,8 +349,8 @@ class _LunarCalendarPickerState extends State<LunarCalendarPicker> {
                               fontSize: 8,
                               fontWeight: FontWeight.w600,
                               color: isSelected
-                                  ? Colors.white.withOpacity(0.8)
-                                  : AppTheme.textSecondary.withOpacity(0.5),
+                                  ? Colors.white.withValues(alpha: 0.8)
+                                  : AppTheme.textSecondary.withValues(alpha: 0.5),
                             ),
                           ),
                       ],
@@ -396,7 +396,7 @@ class _LunarCalendarPickerState extends State<LunarCalendarPicker> {
                     style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
-                      color: AppTheme.textSecondary.withOpacity(0.7),
+                      color: AppTheme.textSecondary.withValues(alpha: 0.7),
                     ),
                   ),
                 ],

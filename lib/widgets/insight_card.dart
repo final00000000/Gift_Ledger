@@ -60,7 +60,7 @@ class _InsightCardState extends State<InsightCard> {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: Colors.black.withValues(alpha: 0.04),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
@@ -107,7 +107,7 @@ class _InsightCardState extends State<InsightCard> {
             width: 44,
             height: 44,
             decoration: BoxDecoration(
-              color: AppTheme.primaryColor.withOpacity(0.08),
+              color: AppTheme.primaryColor.withValues(alpha: 0.08),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(
@@ -128,7 +128,7 @@ class _InsightCardState extends State<InsightCard> {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                       decoration: BoxDecoration(
-                        color: AppTheme.primaryColor.withOpacity(0.08),
+                        color: AppTheme.primaryColor.withValues(alpha: 0.08),
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Row(
@@ -193,7 +193,7 @@ class _InsightCardState extends State<InsightCard> {
       width: isActive ? 14 : 6,
       height: 6,
       decoration: BoxDecoration(
-        color: isActive ? AppTheme.primaryColor : AppTheme.primaryColor.withOpacity(0.2),
+        color: isActive ? AppTheme.primaryColor : AppTheme.primaryColor.withValues(alpha: 0.2),
         borderRadius: BorderRadius.circular(3),
       ),
     );

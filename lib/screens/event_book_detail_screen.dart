@@ -9,7 +9,7 @@ import '../widgets/gift_list_item.dart';
 import '../widgets/empty_state.dart';
 import '../utils/lunar_utils.dart';
 import '../services/security_service.dart';
-import '../widgets/pin_code_dialog.dart';
+import '../utils/security_unlock.dart';
 import '../widgets/privacy_aware_text.dart';
 import 'add_record_screen.dart';
 import 'batch_add_screen.dart';
@@ -27,13 +27,8 @@ class _EventBookDetailScreenState extends State<EventBookDetailScreen> {
   final StorageService _db = StorageService();
   final SecurityService _securityService = SecurityService();
 
-  /// 验证安全锁，返回是否通过验证
-  Future<bool> _verifySecurityLock() async {
-    if (!_securityService.isUnlocked.value) {
-      return await PinCodeDialog.show(context);
-    }
-    return true;
-  }
+  /// 验证安全锁，返回是否通过验证（统一入口）
+  Future<bool> _verifySecurityLock() => _securityService.ensureUnlocked(context);
 
   List<Gift> _gifts = [];
   Map<int, Guest> _guestMap = {};
@@ -70,17 +65,21 @@ class _EventBookDetailScreenState extends State<EventBookDetailScreen> {
         if (mounted) setState(() => _isLoading = false);
         return;
       }
-      final gifts = await _db.getGiftsByEventBook(eventBookId);
-      final received = await _db.getEventBookReceivedTotal(eventBookId);
-      final sent = await _db.getEventBookSentTotal(eventBookId);
-      final guests = await _db.getAllGuests();
+
+      // 并行加载所有数据，减少等待时间
+      final results = await Future.wait([
+        _db.getGiftsByEventBook(eventBookId),
+        _db.getEventBookReceivedTotal(eventBookId),
+        _db.getEventBookSentTotal(eventBookId),
+        _db.getAllGuests(),
+      ]);
 
       if (mounted) {
         setState(() {
-          _gifts = gifts;
-          _totalReceived = received;
-          _totalSent = sent;
-          _guestMap = {for (var g in guests) g.id!: g};
+          _gifts = results[0] as List<Gift>;
+          _totalReceived = results[1] as double;
+          _totalSent = results[2] as double;
+          _guestMap = {for (var g in (results[3] as List<Guest>)) g.id!: g};
           _isLoading = false;
         });
       }
@@ -111,7 +110,7 @@ class _EventBookDetailScreenState extends State<EventBookDetailScreen> {
               leading: Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: AppTheme.primaryColor.withOpacity(0.1),
+                  color: AppTheme.primaryColor.withValues(alpha: 0.1),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(Icons.add, color: AppTheme.primaryColor),
@@ -134,7 +133,7 @@ class _EventBookDetailScreenState extends State<EventBookDetailScreen> {
               leading: Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: Colors.orange.withOpacity(0.1),
+                  color: Colors.orange.withValues(alpha: 0.1),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(Icons.playlist_add, color: Colors.orange),
@@ -180,7 +179,7 @@ class _EventBookDetailScreenState extends State<EventBookDetailScreen> {
                     borderRadius: BorderRadius.circular(20),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.03),
+                        color: Colors.black.withValues(alpha: 0.03),
                         offset: const Offset(0, 4),
                         blurRadius: 10,
                       ),
@@ -227,7 +226,7 @@ class _EventBookDetailScreenState extends State<EventBookDetailScreen> {
                                 widget.eventBook.note!,
                                 style: TextStyle(
                                   fontSize: 13,
-                                  color: AppTheme.textSecondary.withOpacity(0.8),
+                                  color: AppTheme.textSecondary.withValues(alpha: 0.8),
                                   height: 1.5,
                                 ),
                               ),
@@ -338,7 +337,7 @@ class _EventBookDetailScreenState extends State<EventBookDetailScreen> {
                 height: 4,
                 margin: const EdgeInsets.only(bottom: 20),
                 decoration: BoxDecoration(
-                  color: Colors.grey.withOpacity(0.3),
+                  color: Colors.grey.withValues(alpha: 0.3),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -349,7 +348,7 @@ class _EventBookDetailScreenState extends State<EventBookDetailScreen> {
                   width: 48,
                   height: 48,
                   decoration: BoxDecoration(
-                    color: itemColor.withOpacity(0.1),
+                    color: itemColor.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(

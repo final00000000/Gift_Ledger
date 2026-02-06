@@ -269,11 +269,11 @@ class _EventBookFormState extends State<_EventBookForm> {
       fillColor: Colors.white,
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: AppTheme.textSecondary.withOpacity(0.35)),
+        borderSide: BorderSide(color: AppTheme.textSecondary.withValues(alpha: 0.35)),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: AppTheme.textSecondary.withOpacity(0.35)),
+        borderSide: BorderSide(color: AppTheme.textSecondary.withValues(alpha: 0.35)),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
@@ -375,7 +375,7 @@ class _EventBookFormState extends State<_EventBookForm> {
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: AppTheme.textSecondary.withOpacity(0.35)),
+                      border: Border.all(color: AppTheme.textSecondary.withValues(alpha: 0.35)),
                     ),
                     child: Row(
                       children: [

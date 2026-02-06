@@ -1,0 +1,53 @@
+name: Sync Version
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - pubspec.yaml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Generate version.json
+        run: |
+          python - <<'PY'
+          import json
+          import pathlib
+          import re
+
+          text = pathlib.Path("pubspec.yaml").read_text(encoding="utf-8")
+          match = re.search(r"^version:\\s*([^\\s]+)", text, re.M)
+          if not match:
+            raise SystemExit("version not found in pubspec.yaml")
+
+          full_version = match.group(1).strip()
+          semver = full_version.split("+", 1)[0]
+
+          pathlib.Path("version.json").write_text(
+            json.dumps({"version": semver}, ensure_ascii=False) + "\\n",
+            encoding="utf-8",
+          )
+          print(f"version.json -> {semver}")
+          PY
+
+      - name: Commit and push (if changed)
+        run: |
+          if git diff --quiet; then
+            echo "No version change"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add version.json
+          git commit -m "chore: sync version.json"
+          git push

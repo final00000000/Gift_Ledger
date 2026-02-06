@@ -1,7 +1,10 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:intl/intl.dart';
 import '../models/gift.dart';
 import '../models/guest.dart';
+import '../services/security_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/lunar_utils.dart';
 import 'privacy_aware_text.dart';
@@ -105,42 +108,69 @@ class _TimelineListItemState extends State<TimelineListItem>
         ? AppTheme.primaryColor
         : AppTheme.accentColor;
 
-    return Dismissible(
-      key: Key('gift_${widget.gift.id}'),
-      background: _buildSwipeBackground(
-        color: Colors.blue,
-        icon: Icons.edit_rounded,
-        alignment: Alignment.centerLeft,
+    // 用 Slidable 替代 Dismissible：避免可“划到最外面/整行飞走”的体验，同时可控地展示编辑/删除动作。
+    final card = _buildCard(itemColor);
+
+    // 统一由外层控制间距，保证动作区高度与 item 高度一致。
+    return Padding(
+      padding: EdgeInsets.only(
+        right: AppTheme.spacingM,
+        bottom: AppTheme.spacingS,
       ),
-      secondaryBackground: _buildSwipeBackground(
-        color: Colors.red,
-        icon: Icons.delete_rounded,
-        alignment: Alignment.centerRight,
-      ),
-      confirmDismiss: (direction) async {
-        if (direction == DismissDirection.startToEnd) {
-          // 右滑编辑
-          widget.onEdit?.call();
-          return false;
-        } else {
-          // 左滑删除
-          return await _showDeleteConfirmation();
-        }
-      },
-      onDismissed: (direction) {
-        if (direction == DismissDirection.endToStart) {
-          widget.onDelete?.call();
-        }
-      },
       child: IntrinsicHeight(
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // 左侧时间轴
+            // 左侧时间轴不参与侧滑，保持稳定
             _buildTimeline(itemColor),
-            // 右侧卡片
+            // 右侧卡片可侧滑
             Expanded(
-              child: _buildCard(itemColor),
+              child: ValueListenableBuilder<bool>(
+                valueListenable: SecurityService().isUnlocked,
+                builder: (context, isUnlocked, _) {
+                  return Slidable(
+                    key: Key('gift_${widget.gift.id}_slidable'),
+                    enabled: isUnlocked,
+                  startActionPane: null,
+                    endActionPane: (widget.onEdit == null && widget.onDelete == null)
+                        ? null
+                        : ActionPane(
+                            motion: const ScrollMotion(),
+                            extentRatio: 0.52,
+                            children: [
+                              if (widget.onEdit != null)
+                                _buildActionButton(
+                                  label: '编辑',
+                                  color: const Color(0xFF2C2C2E), // iOS 深灰
+                                  onTap: () {
+                                    widget.onEdit?.call();
+                                  },
+                                  radius: const BorderRadius.all(Radius.circular(16)),
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              if (widget.onEdit != null && widget.onDelete != null)
+                                const SizedBox(width: 8),
+                              if (widget.onDelete != null)
+                                _buildActionButton(
+                                  label: '删除',
+                                  color: const Color(0xFFFF3B30), // iOS 系统红
+                                  onTap: () async {
+                                    // 即使 UI 层已禁用侧滑，这里也做防御性校验：锁定时不允许删除。
+                                    if (!SecurityService().isUnlocked.value) return;
+                                    final confirmed = await _showDeleteConfirmation();
+                                    if (confirmed) {
+                                      widget.onDelete?.call();
+                                    }
+                                  },
+                                  radius: const BorderRadius.all(Radius.circular(16)),
+                                  fontWeight: FontWeight.w800,
+                                ),
+                            ],
+                          ),
+                  child: card,
+                );
+              },
+            ),
             ),
           ],
         ),
@@ -158,7 +188,7 @@ class _TimelineListItemState extends State<TimelineListItem>
             Container(
               width: 2,
               height: 12,
-              color: color.withOpacity(0.2),
+              color: color.withValues(alpha: 0.2),
             )
           else
             const SizedBox(height: 12),
@@ -171,7 +201,7 @@ class _TimelineListItemState extends State<TimelineListItem>
               shape: BoxShape.circle,
               boxShadow: [
                 BoxShadow(
-                  color: color.withOpacity(0.4),
+                  color: color.withValues(alpha: 0.4),
                   blurRadius: 6,
                   offset: const Offset(0, 2),
                 ),
@@ -184,7 +214,7 @@ class _TimelineListItemState extends State<TimelineListItem>
               width: 2,
               color: widget.isLast
                   ? Colors.transparent
-                  : color.withOpacity(0.2),
+                  : color.withValues(alpha: 0.2),
             ),
           ),
         ],
@@ -196,20 +226,16 @@ class _TimelineListItemState extends State<TimelineListItem>
     final dateFormat = DateFormat('MM月dd日');
 
     return Container(
-      margin: const EdgeInsets.only(
-        right: AppTheme.spacingM,
-        bottom: AppTheme.spacingS,
-      ),
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: itemColor.withOpacity(0.1),
+          color: itemColor.withValues(alpha: 0.1),
           width: 1,
         ),
         boxShadow: [
           BoxShadow(
-            color: itemColor.withOpacity(0.08),
+            color: itemColor.withValues(alpha: 0.08),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
@@ -232,7 +258,7 @@ class _TimelineListItemState extends State<TimelineListItem>
                       Icon(
                         Icons.calendar_today_rounded,
                         size: 14,
-                        color: AppTheme.textSecondary.withOpacity(0.6),
+                        color: AppTheme.textSecondary.withValues(alpha: 0.6),
                       ),
                       const SizedBox(width: 6),
                       Text(
@@ -240,7 +266,7 @@ class _TimelineListItemState extends State<TimelineListItem>
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
-                          color: AppTheme.textSecondary.withOpacity(0.8),
+                          color: AppTheme.textSecondary.withValues(alpha: 0.8),
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -248,7 +274,7 @@ class _TimelineListItemState extends State<TimelineListItem>
                         LunarUtils.getLunarDateString(widget.gift.date),
                         style: TextStyle(
                           fontSize: 11,
-                          color: AppTheme.textSecondary.withOpacity(0.5),
+                          color: AppTheme.textSecondary.withValues(alpha: 0.5),
                         ),
                       ),
                     ],
@@ -265,8 +291,8 @@ class _TimelineListItemState extends State<TimelineListItem>
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
                           colors: [
-                            itemColor.withOpacity(0.15),
-                            itemColor.withOpacity(0.05),
+                            itemColor.withValues(alpha: 0.15),
+                            itemColor.withValues(alpha: 0.05),
                           ],
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
@@ -305,7 +331,7 @@ class _TimelineListItemState extends State<TimelineListItem>
                                   vertical: 2,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: itemColor.withOpacity(0.1),
+                                  color: itemColor.withValues(alpha: 0.1),
                                   borderRadius: BorderRadius.circular(6),
                                 ),
                                 child: Text(
@@ -328,14 +354,14 @@ class _TimelineListItemState extends State<TimelineListItem>
                                   vertical: 2,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: Colors.grey.withOpacity(0.1),
+                                  color: Colors.grey.withValues(alpha: 0.1),
                                   borderRadius: BorderRadius.circular(4),
                                 ),
                                 child: Text(
                                   widget.gift.eventType,
                                   style: TextStyle(
                                     fontSize: 11,
-                                    color: AppTheme.textSecondary.withOpacity(0.8),
+                                    color: AppTheme.textSecondary.withValues(alpha: 0.8),
                                   ),
                                 ),
                               ),
@@ -345,7 +371,7 @@ class _TimelineListItemState extends State<TimelineListItem>
                                   dateFormat.format(widget.gift.date),
                                   style: TextStyle(
                                     fontSize: 11,
-                                    color: AppTheme.textSecondary.withOpacity(0.6),
+                                    color: AppTheme.textSecondary.withValues(alpha: 0.6),
                                   ),
                                 ),
                               ],
@@ -373,47 +399,37 @@ class _TimelineListItemState extends State<TimelineListItem>
     );
   }
 
-  Widget _buildSwipeBackground({
-    required Color color,
-    required IconData icon,
-    required Alignment alignment,
-  }) {
-    return Container(
-      margin: const EdgeInsets.only(
-        left: 60,
-        right: AppTheme.spacingM,
-        bottom: AppTheme.spacingS,
-      ),
-      decoration: BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      alignment: alignment,
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Icon(
-        icon,
-        color: Colors.white,
-        size: 28,
-      ),
-    );
-  }
-
   Future<bool> _showDeleteConfirmation() async {
-    final result = await showDialog<bool>(
+    final result = await showCupertinoDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => CupertinoAlertDialog(
         title: const Text('确认删除'),
-        content: Text(
-          '确定要删除这条记录吗？\n\n${widget.guest?.name ?? "未知"} · ${widget.gift.eventType}\n¥${widget.gift.amount.toStringAsFixed(0)}',
+        content: Padding(
+          padding: const EdgeInsets.only(top: 10),
+          child: Column(
+            children: [
+              const Text('确定要删除这条记录吗？'),
+              const SizedBox(height: 10),
+              Text('${widget.guest?.name ?? "未知"} · ${widget.gift.eventType}'),
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Text('金额：'),
+                  PrivacyAwareText('¥${widget.gift.amount.toStringAsFixed(0)}'),
+                ],
+              ),
+            ],
+          ),
         ),
         actions: [
-          TextButton(
+          CupertinoDialogAction(
             onPressed: () => Navigator.pop(context, false),
             child: const Text('取消'),
           ),
-          FilledButton(
+          CupertinoDialogAction(
+            isDestructiveAction: true,
             onPressed: () => Navigator.pop(context, true),
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
             child: const Text('删除'),
           ),
         ],
@@ -439,6 +455,37 @@ class _TimelineListItemState extends State<TimelineListItem>
       default:
         return Icons.card_giftcard_rounded;
     }
+  }
+
+  Widget _buildActionButton({
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+    required BorderRadius radius,
+    required FontWeight fontWeight,
+  }) {
+    return Expanded(
+      child: ClipRRect(
+        borderRadius: radius,
+        child: Material(
+          color: color,
+          child: InkWell(
+            onTap: onTap,
+            child: Center(
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: fontWeight,
+                  color: Colors.white,
+                  letterSpacing: -0.2,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -470,7 +517,7 @@ class TimelineDateHeader extends StatelessWidget {
               vertical: 6,
             ),
             decoration: BoxDecoration(
-              color: AppTheme.primaryColor.withOpacity(0.1),
+              color: AppTheme.primaryColor.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(20),
             ),
             child: Row(
@@ -498,7 +545,7 @@ class TimelineDateHeader extends StatelessWidget {
             LunarUtils.getLunarDateString(date),
             style: TextStyle(
               fontSize: 11,
-              color: AppTheme.textSecondary.withOpacity(0.6),
+              color: AppTheme.textSecondary.withValues(alpha: 0.6),
             ),
           ),
         ],

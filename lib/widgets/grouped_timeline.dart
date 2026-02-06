@@ -28,7 +28,9 @@ class GroupedGifts {
 
 /// 分组时间轴组件
 /// 按日期分组显示：今天、昨天、本周、更早
-class GroupedTimeline extends StatelessWidget {
+///
+/// 性能优化：使用 StatefulWidget + 缓存，避免重复分组计算
+class GroupedTimeline extends StatefulWidget {
   final List<Gift> gifts;
   final Map<int, Guest> guestMap;
   final Function(Gift gift, Guest? guest)? onTap;
@@ -46,8 +48,48 @@ class GroupedTimeline extends StatelessWidget {
     this.animationDelay = Duration.zero,
   });
 
+  @override
+  State<GroupedTimeline> createState() => _GroupedTimelineState();
+}
+
+class _GroupedTimelineState extends State<GroupedTimeline> {
+  // 缓存分组结果，避免重复计算
+  List<GroupedGifts>? _cachedGroups;
+  List<Gift>? _lastGifts;
+
+  @override
+  void initState() {
+    super.initState();
+    _cachedGroups = _groupGifts(widget.gifts);
+    _lastGifts = widget.gifts;
+  }
+
+  @override
+  void didUpdateWidget(GroupedTimeline oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    // 只在 gifts 列表变化时重新分组
+    if (!_giftsEqual(widget.gifts, _lastGifts)) {
+      _cachedGroups = _groupGifts(widget.gifts);
+      _lastGifts = widget.gifts;
+    }
+  }
+
+  /// 检查两个 gifts 列表是否相等（浅比较）
+  bool _giftsEqual(List<Gift> a, List<Gift>? b) {
+    if (b == null) return false;
+    if (a.length != b.length) return false;
+    if (identical(a, b)) return true;
+
+    // 浅比较：检查列表长度和引用
+    for (int i = 0; i < a.length; i++) {
+      if (!identical(a[i], b[i])) return false;
+    }
+    return true;
+  }
+
   /// 将礼物列表按日期分组
-  List<GroupedGifts> _groupGifts() {
+  List<GroupedGifts> _groupGifts(List<Gift> gifts) {
     if (gifts.isEmpty) return [];
 
     final now = DateTime.now();
@@ -113,7 +155,8 @@ class GroupedTimeline extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final groups = _groupGifts();
+    // 使用缓存的分组结果，避免重复计算
+    final groups = _cachedGroups ?? [];
 
     if (groups.isEmpty) {
       return const SizedBox.shrink();
@@ -125,14 +168,14 @@ class GroupedTimeline extends StatelessWidget {
         for (int groupIndex = 0; groupIndex < groups.length; groupIndex++) ...[
           _GroupHeader(
             group: groups[groupIndex],
-            animationDelay: animationDelay +
+            animationDelay: widget.animationDelay +
                 Duration(milliseconds: groupIndex * 100),
           ),
           ...List.generate(
             groups[groupIndex].gifts.length,
             (index) {
               final gift = groups[groupIndex].gifts[index];
-              final guest = guestMap[gift.guestId];
+              final guest = widget.guestMap[gift.guestId];
               final globalIndex = _getGlobalIndex(groups, groupIndex, index);
 
               // 判断是否需要显示日期头部
@@ -156,10 +199,10 @@ class GroupedTimeline extends StatelessWidget {
                     index == groups[groupIndex].gifts.length - 1,
                 showDateHeader: showDateHeader,
                 index: globalIndex,
-                animationDelay: animationDelay,
-                onTap: onTap != null ? () => onTap!(gift, guest) : null,
-                onEdit: onEdit != null ? () => onEdit!(gift, guest) : null,
-                onDelete: onDelete != null ? () => onDelete!(gift) : null,
+                animationDelay: widget.animationDelay,
+                onTap: widget.onTap != null ? () => widget.onTap!(gift, guest) : null,
+                onEdit: widget.onEdit != null ? () => widget.onEdit!(gift, guest) : null,
+                onDelete: widget.onDelete != null ? () => widget.onDelete!(gift) : null,
               );
             },
           ),
@@ -275,7 +318,7 @@ class _GroupHeaderState extends State<_GroupHeader>
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
+                color: color.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Icon(
@@ -302,7 +345,7 @@ class _GroupHeaderState extends State<_GroupHeader>
                 vertical: 3,
               ),
               decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
+                color: color.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Text(
@@ -324,8 +367,8 @@ class _GroupHeaderState extends State<_GroupHeader>
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: [
-                      color.withOpacity(0.3),
-                      color.withOpacity(0),
+                      color.withValues(alpha: 0.3),
+                      color.withValues(alpha: 0),
                     ],
                   ),
                 ),

@@ -1,13 +1,13 @@
-# 📱 Gift Money Tracker
+# 📱 Gift Ledger
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/version-1.2.0-blue.svg)
+![Version](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Ffinal00000000%2FGift_Ledger%2Fmaster%2Fversion.json&query=%24.version&label=version&color=blue)
 ![Flutter](https://img.shields.io/badge/Flutter-3.2.0-02569B?logo=flutter)
 ![License](https://img.shields.io/badge/License-MIT-green.svg)
 ![Platform](https://img.shields.io/badge/platform-Android%20%7C%20Windows%20%7C%20Web%20%7C%20iOS-lightgrey)
 
-A simple and elegant gift money tracking app to help you manage social gift exchanges
+A simple and elegant gift money tracking app for managing social gift exchanges.
 
 English | [简体中文](./README.md)
 
@@ -15,36 +15,38 @@ English | [简体中文](./README.md)
 
 ---
 
+## 📑 Table of Contents
+
+- [Download](#-download)
+- [Features](#-features)
+- [Screenshots](#-screenshots)
+- [Tech Stack](#-tech-stack)
+- [Changelog](#-changelog)
+- [Build Guide](#-build-guide)
+- [Support](#-support)
+
+---
+
+## 🚀 Download
+
+| Platform | Link | Notes |
+|----------|------|------|
+| **Android** | [📦 APK Download](https://github.com/final00000000/Gift_Ledger/releases/latest) | Install directly |
+| **Windows** | [📦 ZIP Download](https://github.com/final00000000/Gift_Ledger/releases/latest) | Unzip and run `Gift_Ledger.exe` |
+| **Web** | [📦 ZIP Download](https://github.com/final00000000/Gift_Ledger/releases/latest) | Deploy to static hosting |
+| **iOS** | No prebuilt package | Build it yourself (see [docs/BUILD_EN.md](./docs/BUILD_EN.md)) |
+
+---
+
 ## ✨ Features
 
-### 📊 Data Statistics
-- **Balance Overview**: Clear income and expense comparison cards
-- **Real-time Balance**: Dynamic calculation of balance
-- **Visual Charts**: Intuitive display of income and expense trends
+- **Balance Overview**: Visual stats and trend charts
+- **Quick Bookkeeping**: Events/relationships/lunar date support
+- **Social Tracking**: Contacts and return reminders
+- **Event Books**: Organize by event with batch entry
+- **Backups**: Export/import via Excel or JSON
 
-### 📝 Record Management
-- **Quick Bookkeeping**: Simple accounting interface with custom amount input
-- **Smart Suggestions**: Contact suggestions based on history
-- **Flexible Categories**: Wedding, baby shower, housewarming, birthday, funeral, New Year
-- **Relationship Tags**: Friends, colleagues, relatives, classmates
-
-### 👥 Contact Management
-- **Contact List**: Auto-maintain list of gift exchange contacts
-- **Transaction Tracking**: Clear record of amounts for each person
-- **Return Reminders**: Smart labels for pending and completed returns
-- **Progress Visualization**: Visual progress bars
-
-### 📱 Convenient Features
-- **Search & Filter**: Quick search by name or occasion
-- **Edit & Delete**: Tap any record to edit or delete
-- **Data Backup**: Export to Excel or JSON format
-- **Data Recovery**: Import backup files
-- **Strict Validation**: Prevent duplicate imports
-
-### 🎨 UI Design
-- **Modern UI**: Material Design 3
-- **Smooth Animations**: Carefully designed transitions
-- **Responsive Layout**: Adapts to different screen sizes
+Details: [docs/FEATURES_EN.md](./docs/FEATURES_EN.md)
 
 ---
 
@@ -69,215 +71,33 @@ English | [简体中文](./README.md)
 
 ---
 
-## 📋 Changelog
-
-### v1.2.0 (2026-01-15) 🆕
-- 📚 **Event Books**: Manage gifts by events (weddings, baby showers, etc.)
-- 📝 **Batch Entry**: Quickly add multiple records in event books
-- 🔔 **Monthly Reminders**: Auto-push Top 3 pending gift returns
-- ⚡ **Performance**: Parallel data loading, 3-5x faster
-- 🐛 **Bug Fixes**: Multiple UI and layout issues
-
-<details>
-<summary>View older versions</summary>
-
-### v1.0.1 (2026-01-14)
-- 📝 Unified version numbers
-- 📚 Improved iOS build instructions
-- 📥 Updated download table and deployment tips
-
-### v1.0.0 (2026-01-13)
-- 🎉 Initial release
-- 📊 Balance overview cards
-- 📝 Quick bookkeeping
-- 👥 Contact management
-- 📤 Data export/import
-
-</details>
-
-👉 [View Full Changelog](./CHANGELOG.md)
-
----
-
-## 🚀 Getting Started
-
-### Requirements
-
-- **Flutter SDK**: 3.2.0 or higher
-- **Dart SDK**: 2.18.0 or higher
-
-#### Android
-- Android SDK: API 21 (Android 5.0) or higher
-- Java 17 or higher
-
-#### iOS (Self-Build Required)
-- Xcode 14.0 or higher
-- CocoaPods 1.11.0 or higher
-- macOS 12.0 or higher
-- Apple ID (free account works for device testing)
-
-> [!NOTE]
-> **iOS Users**: Pre-built IPA files are not available due to lack of Apple Developer account. Please refer to the [iOS Build Instructions](#ios-build-instructions) below.
-
-#### Windows
-- Windows 10 or higher
-- Visual Studio 2019 or higher (with C++ desktop development tools)
-
-#### Web
-- Modern web browser (Chrome, Firefox, Safari, Edge)
-- Static web hosting service (optional for deployment)
-
-### Installation
-
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/final00000000/Gift_Ledger.git
-   cd Gift_Ledger
-   ```
-
-2. **Install dependencies**
-   ```bash
-   flutter pub get
-   ```
-
-3. **Run the app**
-   ```bash
-   flutter run
-   ```
-
-4. **Build release version**
-   
-   **Android APK**
-   ```bash
-   flutter build apk --release
-   ```
-   
-   **iOS** (requires macOS and Xcode)
-   ```bash
-   flutter build ios --release
-   # Open in Xcode for signing and installation
-   open ios/Runner.xcworkspace
-   ```
-   
-   **Windows**
-   ```bash
-   flutter build windows --release
-   # Executable: build\windows\x64\runner\Release\gift_ledger.exe
-   ```
-   
-   **Web**
-   ```bash
-   flutter build web --release
-   # Output: build\web
-   # Can be deployed to any static web server
-   ```
-
-### iOS Build Instructions
-
-Since we don't have an Apple Developer account, iOS users need to build the app themselves. Here's how:
-
-#### Prerequisites
-- macOS 12.0 or later
-- Xcode 14.0 or later
-- CocoaPods 1.11.0 or later
-- Apple ID (free account works for device testing)
-
-#### Build Steps
-
-1. **Install CocoaPods dependencies**
-   ```bash
-   cd ios
-   pod install
-   cd ..
-   ```
-
-2. **Open project in Xcode**
-   ```bash
-   open ios/Runner.xcworkspace
-   ```
-
-3. **Configure signing**
-   - Select "Runner" project in Xcode
-   - Go to "Signing & Capabilities" tab
-   - Set "Team" to your Apple ID
-   - Xcode will handle the rest automatically
-
-4. **Connect device and run**
-   - Connect your iPhone/iPad via USB
-   - Select your device in Xcode's top bar
-   - Click Run button (▶️) or press `Cmd + R`
-
-5. **Trust developer certificate**
-   - First launch requires trusting the developer certificate on device
-   - Go to: Settings → General → VPN & Device Management → Trust your Apple ID
-
-> [!IMPORTANT]
-> **Free Apple ID Limitations**  
-> - App signing valid for 7 days, requires rebuild after expiration
-> - Maximum 3 apps can be signed per Apple ID simultaneously
-> - For long-term use, consider Apple Developer Program ($99/year)
-
----
-
-## 🏗️ Project Structure
-
-```
-Gift_Ledger/
-├── lib/
-│   ├── main.dart                 # App entry point
-│   ├── models/                   # Data models
-│   ├── screens/                  # Screens
-│   ├── services/                 # Business logic
-│   ├── widgets/                  # Custom widgets
-│   └── theme/                    # Theme configuration
-├── android/                      # Android platform code
-├── ios/                          # iOS platform code
-├── assets/                       # Asset files
-└── pubspec.yaml                  # Project configuration
-```
-
----
-
-## 📦 Core Dependencies
-
-| Package | Version | Purpose |
-|---------|---------|---------|
-| sqflite | ^2.3.0 | Local database storage |
-| path_provider | ^2.1.1 | File path access |
-| intl | ^0.20.2 | Internationalization |
-| file_picker | ^8.0.0 | File picker |
-| excel | ^4.0.3 | Excel file I/O |
-| share_plus | ^8.0.0 | File sharing |
-
----
-
 ## 🛠️ Tech Stack
 
 - **Framework**: Flutter 3.2.0+
 - **Language**: Dart 2.18.0+
-- **Database**: SQLite
-- **UI Design**: Material Design 3
-- **Data Export**: Excel / JSON
+- **Database**: SQLite (sqflite)
+- **UI**: Material Design 3
+- **Export**: Excel / JSON
 
 ---
 
-## 📄 License
+## 📋 Changelog
 
-This project is licensed under the [MIT License](LICENSE)
+**v1.2.7 (2026-02-06)**
+- Config preload and unlock flow improvements
+- Web storage caching optimization
 
----
-
-## 💬 Feedback & Support
-
-- 🐛 [Submit an Issue](https://github.com/final00000000/Gift_Ledger/issues)
-- ⭐ Star us if you like this project!
+👉 [Full changelog](./CHANGELOG.md)
 
 ---
 
-<div align="center">
-  
-### ⭐ Star us if you like this project ⭐
+## 🔨 Build Guide
 
-Made with ❤️ by Flutter
+See: [docs/BUILD_EN.md](./docs/BUILD_EN.md)
 
-</div>
+---
+
+## 💬 Support
+
+- 🐛 [Open an Issue](https://github.com/final00000000/Gift_Ledger/issues)
+- ⭐ Star the repo if this helps

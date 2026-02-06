@@ -120,7 +120,7 @@ class _BatchAddScreenState extends State<BatchAddScreen> {
                       Navigator.pop(context);
                     }
                   },
-                  selectedColor: AppTheme.primaryColor.withOpacity(0.2),
+                  selectedColor: AppTheme.primaryColor.withValues(alpha: 0.2),
                   labelStyle: TextStyle(
                     color: isSelected ? AppTheme.primaryColor : AppTheme.textPrimary,
                     fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
@@ -139,54 +139,68 @@ class _BatchAddScreenState extends State<BatchAddScreen> {
 
   Future<void> _saveAll() async {
     setState(() => _isSaving = true);
-    
+
     try {
       final List<Gift> giftsToInsert = [];
-      
+      final List<Guest> guestsToInsert = [];
+
       // Validation
       for (int i = 0; i < _rows.length; i++) {
         final row = _rows[i];
         final name = row.nameController.text.trim();
         final amountStr = row.amountController.text.trim();
-        
+
         if (name.isEmpty && amountStr.isEmpty) continue;
 
         if (name.isEmpty) {
           throw Exception('第 ${i + 1} 行缺少姓名');
         }
-        
+
         final amount = double.tryParse(amountStr);
         if (amount == null || amount <= 0) {
           throw Exception('第 ${i + 1} 行金额无效');
         }
       }
-      
-      // Fetch all guests for lookup
+
+      // Fetch all guests for lookup (一次性查询)
       final existingGuests = await _db.getAllGuests();
       final guestMap = {for (var g in existingGuests) g.name: g};
+      final newGuestNames = <String>{};
 
+      // 第一遍：收集需要创建的新客人
       for (int i = 0; i < _rows.length; i++) {
         final row = _rows[i];
         final name = row.nameController.text.trim();
         final amountStr = row.amountController.text.trim();
-        
+
+        if (name.isEmpty && amountStr.isEmpty) continue;
+
+        if (!guestMap.containsKey(name) && !newGuestNames.contains(name)) {
+          newGuestNames.add(name);
+          guestsToInsert.add(Guest(name: name, relationship: row.relationship));
+        }
+      }
+
+      // 批量插入新客人
+      if (guestsToInsert.isNotEmpty) {
+        for (final guest in guestsToInsert) {
+          final guestId = await _db.insertGuest(guest);
+          if (guestId > 0) {
+            guestMap[guest.name] = guest.copyWith(id: guestId);
+          }
+        }
+      }
+
+      // 第二遍：创建礼金记录
+      for (int i = 0; i < _rows.length; i++) {
+        final row = _rows[i];
+        final name = row.nameController.text.trim();
+        final amountStr = row.amountController.text.trim();
+
         if (name.isEmpty && amountStr.isEmpty) continue;
 
         final amount = double.parse(amountStr);
-        
-        // Handle Guest
-        int guestId;
-        if (guestMap.containsKey(name)) {
-          final existing = guestMap[name]!;
-          guestId = existing.id!;
-        } else {
-          // Use row specific relationship
-          final newGuest = Guest(name: name, relationship: row.relationship);
-          guestId = await _db.insertGuest(newGuest);
-          if (guestId > 0) {
-             guestMap[name] = newGuest.copyWith(id: guestId);
-          }
-        }
+        final guestId = guestMap[name]!.id!;
 
         giftsToInsert.add(Gift(
           guestId: guestId,
@@ -194,7 +208,6 @@ class _BatchAddScreenState extends State<BatchAddScreen> {
           isReceived: row.isReceived,
           eventType: _defaultEventType,
           eventBookId: widget.eventBook.id,
-          // Use row specific date if set, otherwise default
           date: row.customDate ?? _defaultDate,
         ));
       }
@@ -203,6 +216,7 @@ class _BatchAddScreenState extends State<BatchAddScreen> {
          throw Exception('没有有效数据');
       }
 
+      // 批量插入礼金记录（一次性插入）
       await _db.insertGiftsBatch(giftsToInsert);
 
       if (mounted) {
@@ -237,7 +251,7 @@ class _BatchAddScreenState extends State<BatchAddScreen> {
             child: TextButton(
               onPressed: _isSaving ? null : _saveAll,
               style: TextButton.styleFrom(
-                backgroundColor: AppTheme.primaryColor.withOpacity(0.1),
+                backgroundColor: AppTheme.primaryColor.withValues(alpha: 0.1),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                 padding: const EdgeInsets.symmetric(horizontal: 16),
               ),
@@ -259,7 +273,7 @@ class _BatchAddScreenState extends State<BatchAddScreen> {
               borderRadius: BorderRadius.circular(16),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.04),
+                  color: Colors.black.withValues(alpha: 0.04),
                   offset: const Offset(0, 4),
                   blurRadius: 12,
                 ),
@@ -271,7 +285,7 @@ class _BatchAddScreenState extends State<BatchAddScreen> {
                 Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: AppTheme.primaryColor.withOpacity(0.1),
+                    color: AppTheme.primaryColor.withValues(alpha: 0.1),
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(Icons.book_rounded, color: AppTheme.primaryColor, size: 20),
@@ -300,7 +314,7 @@ class _BatchAddScreenState extends State<BatchAddScreen> {
                           const SizedBox(width: 8),
                           Text(
                             LunarUtils.getLunarDateString(_defaultDate),
-                            style: TextStyle(fontSize: 11, color: AppTheme.textSecondary.withOpacity(0.7)),
+                            style: TextStyle(fontSize: 11, color: AppTheme.textSecondary.withValues(alpha: 0.7)),
                           ),
                           const SizedBox(width: 8),
                           Container(
@@ -352,7 +366,7 @@ class _BatchAddScreenState extends State<BatchAddScreen> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
-           BoxShadow(color: Colors.black.withOpacity(0.02), offset: const Offset(0, 2), blurRadius: 4),
+           BoxShadow(color: Colors.black.withValues(alpha: 0.02), offset: const Offset(0, 2), blurRadius: 4),
         ],
       ),
       child: Column(
@@ -447,7 +461,7 @@ class _BatchAddScreenState extends State<BatchAddScreen> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
                     decoration: BoxDecoration(
-                      color: Colors.orange.withOpacity(0.08),
+                      color: Colors.orange.withValues(alpha: 0.08),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Row(
@@ -478,7 +492,7 @@ class _BatchAddScreenState extends State<BatchAddScreen> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
                     decoration: BoxDecoration(
-                      color: isCustomDate ? AppTheme.primaryColor.withOpacity(0.08) : Colors.grey[100],
+                      color: isCustomDate ? AppTheme.primaryColor.withValues(alpha: 0.08) : Colors.grey[100],
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Row(
@@ -511,7 +525,7 @@ class _BatchAddScreenState extends State<BatchAddScreen> {
                     color: row.isReceived ? const Color(0xFFFFECEC) : const Color(0xFFE6FFFB),
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
-                      color: row.isReceived ? AppTheme.primaryColor.withOpacity(0.3) : AppTheme.accentColor.withOpacity(0.3),
+                      color: row.isReceived ? AppTheme.primaryColor.withValues(alpha: 0.3) : AppTheme.accentColor.withValues(alpha: 0.3),
                       width: 1,
                     ),
                   ),

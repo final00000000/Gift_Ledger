@@ -43,10 +43,10 @@ class AppTheme {
   // ═══════════════════════════════════════════════════════════════════════════
   // 玻璃态效果 (Glassmorphism)
   // ═══════════════════════════════════════════════════════════════════════════
-  static Color get glassBackground => Colors.white.withOpacity(0.85);
-  static Color get glassBorder => Colors.white.withOpacity(0.3);
-  static Color get glassBackgroundDark => Colors.black.withOpacity(0.1);
-  static Color get goldGlassBorder => luxuryGold.withOpacity(0.3);
+  static Color get glassBackground => Colors.white.withValues(alpha: 0.85);
+  static Color get glassBorder => Colors.white.withValues(alpha: 0.3);
+  static Color get glassBackgroundDark => Colors.black.withValues(alpha: 0.1);
+  static Color get goldGlassBorder => luxuryGold.withValues(alpha: 0.3);
   static const double glassBlur = 20.0;
   static const double glassBlurLight = 10.0;
 
@@ -121,8 +121,8 @@ class AppTheme {
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
     colors: [
-      Colors.white.withOpacity(0.9),
-      Colors.white.withOpacity(0.7),
+      Colors.white.withValues(alpha: 0.9),
+      Colors.white.withValues(alpha: 0.7),
     ],
   );
 
@@ -145,7 +145,7 @@ class AppTheme {
       ),
       boxShadow: [
         BoxShadow(
-          color: Colors.black.withOpacity(0.06),
+          color: Colors.black.withValues(alpha: 0.06),
           blurRadius: 20,
           offset: const Offset(0, 8),
         ),
@@ -163,12 +163,12 @@ class AppTheme {
       border: Border.all(color: goldGlassBorder, width: 1.5),
       boxShadow: [
         BoxShadow(
-          color: luxuryGold.withOpacity(0.15),
+          color: luxuryGold.withValues(alpha: 0.15),
           blurRadius: 20,
           offset: const Offset(0, 8),
         ),
         BoxShadow(
-          color: Colors.black.withOpacity(0.05),
+          color: Colors.black.withValues(alpha: 0.05),
           blurRadius: 10,
           offset: const Offset(0, 4),
         ),
@@ -179,7 +179,7 @@ class AppTheme {
   // 卡片阴影 - 柔和版
   static List<BoxShadow> get softShadow => [
     BoxShadow(
-      color: Colors.black.withOpacity(0.06),
+      color: Colors.black.withValues(alpha: 0.06),
       blurRadius: 16,
       offset: const Offset(0, 6),
     ),
@@ -188,12 +188,12 @@ class AppTheme {
   // 卡片阴影 - 金色光晕
   static List<BoxShadow> get goldGlowShadow => [
     BoxShadow(
-      color: luxuryGold.withOpacity(0.2),
+      color: luxuryGold.withValues(alpha: 0.2),
       blurRadius: 24,
       offset: const Offset(0, 8),
     ),
     BoxShadow(
-      color: Colors.black.withOpacity(0.08),
+      color: Colors.black.withValues(alpha: 0.08),
       blurRadius: 12,
       offset: const Offset(0, 4),
     ),
@@ -228,7 +228,7 @@ class AppTheme {
       cardTheme: CardThemeData(
         color: cardColor,
         elevation: 2,
-        shadowColor: Colors.black.withOpacity(0.1),
+        shadowColor: Colors.black.withValues(alpha: 0.1),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(radiusLarge),
         ),
@@ -240,8 +240,8 @@ class AppTheme {
         elevation: 4,
       ),
       chipTheme: ChipThemeData(
-        backgroundColor: Colors.grey.withOpacity(0.1),
-        selectedColor: primaryColor.withOpacity(0.1),
+        backgroundColor: Colors.grey.withValues(alpha: 0.1),
+        selectedColor: primaryColor.withValues(alpha: 0.1),
         labelStyle: const TextStyle(color: textPrimary),
         secondaryLabelStyle: const TextStyle(color: primaryColor),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(radiusSmall)),

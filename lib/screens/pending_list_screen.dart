@@ -13,7 +13,7 @@ import '../utils/lunar_utils.dart';
 import '../widgets/custom_toast.dart';
 import '../services/export_service.dart';
 import '../services/security_service.dart';
-import '../widgets/pin_code_dialog.dart';
+import '../utils/security_unlock.dart';
 import '../widgets/privacy_aware_text.dart';
 import 'add_record_screen.dart';
 
@@ -32,13 +32,8 @@ class _PendingListScreenState extends State<PendingListScreen> with SingleTicker
   final _exportService = ExportService();
   final _securityService = SecurityService();
 
-  /// 验证安全锁，返回是否通过验证
-  Future<bool> _verifySecurityLock() async {
-    if (!_securityService.isUnlocked.value) {
-      return await PinCodeDialog.show(context);
-    }
-    return true;
-  }
+  /// 验证安全锁，返回是否通过验证（统一入口）
+  Future<bool> _verifySecurityLock() => _securityService.ensureUnlocked(context);
 
   List<Gift> _unreturnedGifts = [];
   List<Gift> _pendingReceipts = [];
@@ -74,15 +69,18 @@ class _PendingListScreenState extends State<PendingListScreen> with SingleTicker
 
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
-    
-    final unreturnedGifts = await _storageService.getUnreturnedGifts();
-    final pendingReceipts = await _storageService.getPendingReceipts();
-    final guests = await _storageService.getAllGuests();
-    
+
+    // 并行加载所有数据，减少等待时间
+    final results = await Future.wait([
+      _storageService.getUnreturnedGifts(),
+      _storageService.getPendingReceipts(),
+      _storageService.getAllGuests(),
+    ]);
+
     setState(() {
-      _unreturnedGifts = unreturnedGifts;
-      _pendingReceipts = pendingReceipts;
-      _guestMap = {for (var g in guests) g.id!: g};
+      _unreturnedGifts = results[0] as List<Gift>;
+      _pendingReceipts = results[1] as List<Gift>;
+      _guestMap = {for (var g in (results[2] as List<Guest>)) g.id!: g};
       _isLoading = false;
     });
     _sortLists();
@@ -349,7 +347,7 @@ class _PendingListScreenState extends State<PendingListScreen> with SingleTicker
                     decoration: BoxDecoration(
                       color: AppTheme.backgroundColor,
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: AppTheme.primaryColor.withOpacity(0.2)),
+                      border: Border.all(color: AppTheme.primaryColor.withValues(alpha: 0.2)),
                     ),
                     child: Text(
                       previewText,
@@ -469,10 +467,10 @@ class _PendingListScreenState extends State<PendingListScreen> with SingleTicker
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.black.withOpacity(0.04)),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.04)),
         boxShadow: [
           BoxShadow(
-            color: Theme.of(context).shadowColor.withOpacity(0.04),
+            color: Theme.of(context).shadowColor.withValues(alpha: 0.04),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -620,7 +618,7 @@ class _PendingListScreenState extends State<PendingListScreen> with SingleTicker
           Icon(
             isUnreturned ? Icons.inbox_outlined : Icons.outbox_outlined,
             size: 64,
-            color: AppTheme.textSecondary.withOpacity(0.3),
+            color: AppTheme.textSecondary.withValues(alpha: 0.3),
           ),
           const SizedBox(height: 16),
           Text(
