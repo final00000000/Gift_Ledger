@@ -59,9 +59,9 @@
 |:---:|:---:|
 | ![首页](screenshots/home.jpg) | ![添加记录](screenshots/add_record.jpg) |
 
-| 数据统计 | 统计详情 |
+| 数据统计 |
 |:---:|:---:|
-| ![统计](screenshots/statistics.jpg) | ![统计详情](screenshots/statistics_details.jpg) |
+| ![统计](screenshots/statistics.jpg) |
 
 | 设置 |
 |:---:|

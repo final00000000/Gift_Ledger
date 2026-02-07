@@ -59,9 +59,9 @@ Details: [docs/FEATURES_EN.md](./docs/FEATURES_EN.md)
 |:---:|:---:|
 | ![Home](screenshots/home.jpg) | ![Add Record](screenshots/add_record.jpg) |
 
-| Statistics | Statistics Details |
+| Statistics |
 |:---:|:---:|
-| ![Statistics](screenshots/statistics.jpg) | ![Statistics Details](screenshots/statistics_details.jpg) |
+| ![Statistics](screenshots/statistics.jpg) |
 
 | Settings |
 |:---:|
