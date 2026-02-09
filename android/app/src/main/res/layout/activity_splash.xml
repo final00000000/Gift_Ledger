@@ -2,7 +2,7 @@
 <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#F2F3F5"
+    android:background="#FFFFFF"
     android:clipChildren="false"
     android:clipToPadding="false">
 
@@ -19,42 +19,19 @@
         android:clipChildren="false"
         android:clipToPadding="false">
 
-        <!-- Logo 圆形背景 + 图标 + 双层阴影效果 -->
+        <!-- Logo 主体 - 使用启动页图标 -->
         <FrameLayout
             android:layout_width="160dp"
             android:layout_height="160dp"
             android:clipChildren="false"
             android:clipToPadding="false">
 
-            <!-- 外层阴影 - 更大更淡 -->
-            <View
-                android:layout_width="130dp"
-                android:layout_height="130dp"
-                android:layout_gravity="center"
-                android:layout_marginTop="20dp"
-                android:background="@drawable/splash_logo_shadow_outer" />
-
-            <!-- 内层阴影 - 更小更深 -->
-            <View
-                android:layout_width="115dp"
-                android:layout_height="115dp"
-                android:layout_gravity="center"
-                android:layout_marginTop="12dp"
-                android:background="@drawable/splash_logo_shadow" />
-
-            <!-- Logo 主体 -->
-            <View
-                android:layout_width="100dp"
-                android:layout_height="100dp"
-                android:layout_gravity="center"
-                android:background="@drawable/splash_logo_bg"
-                android:elevation="12dp" />
-
+            <!-- 使用 flutter_native_splash 生成的启动图标 -->
             <ImageView
-                android:layout_width="56dp"
-                android:layout_height="56dp"
+                android:layout_width="140dp"
+                android:layout_height="140dp"
                 android:layout_gravity="center"
-                android:src="@drawable/ic_gift"
+                android:src="@drawable/splash"
                 android:elevation="13dp"
                 android:contentDescription="Logo" />
         </FrameLayout>

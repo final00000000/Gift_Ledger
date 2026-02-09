@@ -17,8 +17,8 @@ class SplashActivity : AppCompatActivity() {
 
         // 设置沉浸式状态栏
         window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
-        window.statusBarColor = 0xFFF2F3F5.toInt()
-        window.navigationBarColor = 0xFFF2F3F5.toInt()
+        window.statusBarColor = 0xFFFFFFFF.toInt()
+        window.navigationBarColor = 0xFFFFFFFF.toInt()
 
         WindowCompat.setDecorFitsSystemWindows(window, true)
         WindowInsetsControllerCompat(window, window.decorView).apply {

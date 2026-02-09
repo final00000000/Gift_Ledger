@@ -36,6 +36,7 @@ dev_dependencies:
     sdk: flutter
   flutter_lints: ^4.0.0
   flutter_launcher_icons: ^0.13.1
+  flutter_native_splash: ^2.4.4  # 启动页优化（降级以兼容 excel）
 
 flutter_launcher_icons:
   android: "launcher_icon"
@@ -56,4 +57,32 @@ flutter:
   uses-material-design: true
   assets:
     - assets/icon/app_icon.jpg
+    - assets/splash/logo.png
     - pubspec.yaml
+
+# ============================================
+# 启动页配置（消除黑白屏）
+# 方案 1：矢量图 + 方案 C：人际连接红包图标
+# ============================================
+flutter_native_splash:
+  # 通用配置（Android 11 及以下、iOS）
+  color: "#FFFFFF"  # 纯白色背景，与图标一致
+  image: assets/splash/logo.png  # PNG 图标
+
+  # Android 12+ 特殊配置（必须单独设置）
+  android_12:
+    image: assets/splash/logo.png
+    icon_background_color: "#FFFFFF"  # 纯白色背景
+    color: "#FFFFFF"  # 背景色
+
+  # 平台开关
+  android: true
+  ios: true
+  web: false
+
+  # 全屏模式
+  fullscreen: true
+
+  # 图标居中
+  android_gravity: center
+  ios_content_mode: center
