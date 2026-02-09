@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter_native_splash/flutter_native_splash.dart';  // 启动页优化
 import 'theme/app_theme.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/statistics_screen.dart';
@@ -16,24 +17,33 @@ import 'services/config_service.dart';
 import 'services/db_init_native.dart' if (dart.library.js_interop) 'services/db_init_stub.dart' as db_init;
 
 void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+  // 1. 提前初始化 Flutter 绑定
+  final widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
+
+  // 2. 🔑 保留原生启动页，避免过早消失导致黑屏
+  FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
 
   // 预加载配置服务（一次性加载所有 SharedPreferences 到内存）
   await ConfigService().init();
 
   // 设置系统UI样式 - 沉浸式状态栏，与应用背景色一致
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-    statusBarColor: Color(0xFFF2F3F5),  // AppTheme.backgroundColor
+    statusBarColor: Color(0xFFFAF8F5),  // AppTheme.backgroundColor（温暖米白）
     statusBarIconBrightness: Brightness.dark,
     statusBarBrightness: Brightness.light,
-    systemNavigationBarColor: Color(0xFFF2F3F5),
+    systemNavigationBarColor: Color(0xFFFAF8F5),
     systemNavigationBarIconBrightness: Brightness.dark,
   ));
 
-  // 立即启动 UI - 直接进入主页（不等待数据库初始化）
+  // 3. 🔑 优先启动 UI - 确保 Flutter 首帧尽快渲染
   runApp(const GiftMoneyTrackerApp());
 
-  // 后台初始化非关键服务（不阻塞 UI）
+  // 4. 🔑 首帧渲染完成后，立即移除启动页（无缝切换）
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    FlutterNativeSplash.remove();
+  });
+
+  // 5. 后台初始化非关键服务（不阻塞 UI）
   _initServicesInBackground();
 }
 
