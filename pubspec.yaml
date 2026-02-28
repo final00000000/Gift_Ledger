@@ -30,6 +30,8 @@ dependencies:
   flutter_secure_storage: ^10.0.0
   crypto: ^3.0.7
   web: ^0.5.1  # Web API 支持（IndexedDB）
+  url_launcher: ^6.2.5
+  font_awesome_flutter: ^10.7.0
 
 dev_dependencies:
   flutter_test:
