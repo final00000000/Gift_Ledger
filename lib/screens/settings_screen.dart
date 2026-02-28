@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../theme/app_theme.dart';
 import '../widgets/custom_toast.dart';
 import '../widgets/export_dialogs.dart';
@@ -188,12 +190,29 @@ class SettingsScreenState extends State<SettingsScreen> {
             // 简化的头部
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-                child: Text(
-                  '设置',
-                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+                padding: const EdgeInsets.fromLTRB(20, 16, 12, 8),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '设置',
+                        style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => launchUrl(
+                        Uri.parse('https://github.com/final00000000/Gift_Ledger'),
+                        mode: LaunchMode.externalApplication,
+                      ),
+                      icon: const FaIcon(FontAwesomeIcons.github, size: 22, color: Color(0xFF24292F)),
+                      style: IconButton.styleFrom(
+                        foregroundColor: AppTheme.textSecondary,
+                      ),
+                      tooltip: 'GitHub',
+                    ),
+                  ],
                 ),
               ),
             ),
