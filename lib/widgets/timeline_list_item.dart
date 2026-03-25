@@ -7,6 +7,7 @@ import '../models/guest.dart';
 import '../services/security_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/lunar_utils.dart';
+import 'gift_note_preview.dart';
 import 'privacy_aware_text.dart';
 
 /// 时间轴列表项组件
@@ -113,7 +114,7 @@ class _TimelineListItemState extends State<TimelineListItem>
 
     // 统一由外层控制间距，保证动作区高度与 item 高度一致。
     return Padding(
-      padding: EdgeInsets.only(
+      padding: const EdgeInsets.only(
         right: AppTheme.spacingM,
         bottom: AppTheme.spacingS,
       ),
@@ -377,6 +378,11 @@ class _TimelineListItemState extends State<TimelineListItem>
                               ],
                             ],
                           ),
+                          GiftNotePreview(
+                            note: widget.gift.note,
+                            maxLines: 1,
+                            topSpacing: 6,
+                          ),
                         ],
                       ),
                     ),
@@ -523,7 +529,7 @@ class TimelineDateHeader extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(
+                const Icon(
                   Icons.calendar_month_rounded,
                   size: 14,
                   color: AppTheme.primaryColor,
