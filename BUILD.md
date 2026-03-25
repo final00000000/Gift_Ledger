@@ -92,16 +92,94 @@ flutter build windows --release
 
 输出位置：`build/windows/x64/runner/Release/`
 
-### 打包为 ZIP
+### 打包为 EXE 安装器（推荐）
 
 ```bash
-# Windows (PowerShell)
-Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath gift_ledger_windows.zip
+# 1. 先构建 Windows Release
+flutter build windows --release
 
-# Linux/macOS
-cd build/windows/x64/runner/Release
-zip -r ../../../../../gift_ledger_windows.zip *
+# 2. 使用 Inno Setup 脚本生成安装器（示例为 stable）
+# 脚本位置：windows/installer/GiftLedger.iss
+# 需要在 Windows 环境安装 Inno Setup 6
+iscc ^
+  /DAppVersion=1.2.8 ^
+  /DAppBuild=8 ^
+  /DAppChannel=stable ^
+  /DOutputBaseName=gift_ledger-stable-windows-v1.2.8-build8-setup ^
+  windows/installer/GiftLedger.iss
 ```
+
+推荐产物：`gift_ledger-<channel>-windows-v<version>-build<build>-setup.exe`
+
+> 说明：Windows 发布不再以 ZIP 作为主分发格式，优先使用 EXE 安装器，
+> 便于后续 App 内更新直接拉起安装流程。
+
+---
+
+## 🔄 Android / Windows 内置更新发布
+
+### 固定 manifest 地址
+
+客户端固定读取以下地址：
+
+```text
+https://raw.githubusercontent.com/final00000000/Gift_Ledger/master/releases/update-manifest.json
+```
+
+### manifest 结构约定
+
+- 发布侧统一生成 `releases/update-manifest.json`
+- 支持两个通道：`stable`、`beta`
+- 支持两个平台：`android`、`windows`
+- 目标键统一格式：
+
+```text
+<resolvedTargetChannel>@<platform>@<version>@<buildNumber>
+```
+
+### 本地生成 manifest
+
+```bash
+python tool/generate_update_manifest.py \
+  --input tool/release/update_release_matrix.sample.json \
+  --output releases/update-manifest.json
+```
+
+可继续做 JSON 校验：
+
+```bash
+python -m json.tool releases/update-manifest.json > nul
+```
+
+### GitHub Actions 发布工作流
+
+工作流文件：
+
+```text
+.github/workflows/publish-updates.yml
+```
+
+职责：
+
+1. 构建 Android APK
+2. 构建 Windows Release + EXE 安装器
+3. 计算产物 sha256
+4. 上传 GitHub Release 资产
+5. 生成并提交 `releases/update-manifest.json`
+
+### 通道规则
+
+- `stable`：默认公开发布通道
+- `beta`：手动开启的测试通道
+- beta 用户优先接收 beta；若无更高 beta，则回退 stable
+
+### 发布前最小检查清单
+
+- `pubspec.yaml` 版本号已更新
+- Android / Windows 产物命名符合约定
+- manifest 中 `version` / `buildNumber` / `downloadUrl` / `sha256` 正确
+- `releases/update-manifest.json` 可被 Raw URL 直接访问
+- 设置页切换 stable / beta 后，客户端行为符合预期
 
 ---
 
