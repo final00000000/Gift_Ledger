@@ -10,13 +10,16 @@ import 'add_record_screen.dart';
 import '../services/security_service.dart';
 import '../utils/security_unlock.dart';
 import '../widgets/privacy_aware_text.dart';
+import '../widgets/records/record_summary_card.dart';
 
 class RecordListScreen extends StatefulWidget {
   final bool? isReceived; // null = 显示全部记录
+  final Object? storageService;
 
   const RecordListScreen({
     super.key,
     this.isReceived, // 改为可?
+    this.storageService,
   });
 
   @override
@@ -25,7 +28,7 @@ class RecordListScreen extends StatefulWidget {
 
 class _RecordListScreenState extends State<RecordListScreen>
     with SingleTickerProviderStateMixin {
-  final StorageService _db = StorageService();
+  late final dynamic _db;
   final SecurityService _securityService = SecurityService();
   final TextEditingController _searchController = TextEditingController();
 
@@ -33,7 +36,8 @@ class _RecordListScreenState extends State<RecordListScreen>
   Timer? _debounceTimer;
 
   /// 验证安全锁，返回是否通过验证（统一入口）
-  Future<bool> _verifySecurityLock() => _securityService.ensureUnlocked(context);
+  Future<bool> _verifySecurityLock() =>
+      _securityService.ensureUnlocked(context);
 
   List<Gift> _allGifts = [];
   List<Gift> _filteredGifts = [];
@@ -47,6 +51,7 @@ class _RecordListScreenState extends State<RecordListScreen>
   @override
   void initState() {
     super.initState();
+    _db = widget.storageService ?? StorageService();
     _animationController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 800),
@@ -77,8 +82,8 @@ class _RecordListScreenState extends State<RecordListScreen>
     setState(() => _isLoading = true);
 
     try {
-      final gifts = await _db.getAllGifts();
-      final guests = await _db.getAllGuests();
+      final List<Gift> gifts = await _db.getAllGifts() as List<Gift>;
+      final List<Guest> guests = await _db.getAllGuests() as List<Guest>;
 
       if (mounted) {
         setState(() {
@@ -129,8 +134,10 @@ class _RecordListScreenState extends State<RecordListScreen>
       // 搜索筛选（需要通过 guestMap 获取名字）
       if (_searchQuery.isNotEmpty) {
         final guest = _guestMap[gift.guestId];
-        final nameMatch = guest?.name.toLowerCase().contains(_searchQuery) ?? false;
-        final noteMatch = gift.note?.toLowerCase().contains(_searchQuery) ?? false;
+        final nameMatch =
+            guest?.name.toLowerCase().contains(_searchQuery) ?? false;
+        final noteMatch =
+            gift.note?.toLowerCase().contains(_searchQuery) ?? false;
         return nameMatch || noteMatch;
       }
 
@@ -140,11 +147,9 @@ class _RecordListScreenState extends State<RecordListScreen>
     // 计算统计数据（使用 fold 简化）
     final total = filtered.fold<double>(0, (sum, gift) => sum + gift.amount);
 
-    setState(() {
-      _filteredGifts = filtered;
-      _filteredTotalAmount = total;
-      _filteredCount = filtered.length;
-    });
+    _filteredGifts = filtered;
+    _filteredTotalAmount = total;
+    _filteredCount = filtered.length;
   }
 
   /// 获取主题色，null 时使用默认主题
@@ -168,12 +173,13 @@ class _RecordListScreenState extends State<RecordListScreen>
       ),
     );
   }
-  
+
   // 新增统计头部 Widget
   Widget _buildSummaryHeader() {
     return SliverToBoxAdapter(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(AppTheme.spacingL, AppTheme.spacingM, AppTheme.spacingL, 0),
+        padding: const EdgeInsets.fromLTRB(
+            AppTheme.spacingL, AppTheme.spacingM, AppTheme.spacingL, 0),
         child: Row(
           children: [
             Container(
@@ -201,7 +207,7 @@ class _RecordListScreenState extends State<RecordListScreen>
             ),
             PrivacyAwareText(
               '¥${_filteredTotalAmount.toStringAsFixed(0)}',
-              style: TextStyle(
+              style: const TextStyle(
                 color: AppTheme.textPrimary,
                 fontWeight: FontWeight.w900,
                 fontSize: 18,
@@ -273,10 +279,12 @@ class _RecordListScreenState extends State<RecordListScreen>
             controller: _searchController,
             decoration: InputDecoration(
               hintText: '搜索姓名',
-              prefixIcon: const Icon(Icons.search, color: AppTheme.textSecondary),
+              prefixIcon:
+                  const Icon(Icons.search, color: AppTheme.textSecondary),
               suffixIcon: _searchQuery.isNotEmpty
                   ? IconButton(
-                      icon: const Icon(Icons.clear, color: AppTheme.textSecondary),
+                      icon: const Icon(Icons.clear,
+                          color: AppTheme.textSecondary),
                       onPressed: () {
                         _searchController.clear();
                       },
@@ -305,7 +313,8 @@ class _RecordListScreenState extends State<RecordListScreen>
       child: Container(
         height: 40, // 稍微减小高度
         margin: const EdgeInsets.symmetric(horizontal: AppTheme.spacingL),
-        child: ListView.separated( // 使用 separated 自动处理间距
+        child: ListView.separated(
+          // 使用 separated 自动处理间距
           scrollDirection: Axis.horizontal,
           itemCount: categories.length,
           separatorBuilder: (context, index) => const SizedBox(width: 10),
@@ -323,12 +332,15 @@ class _RecordListScreenState extends State<RecordListScreen>
               },
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 300),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
                 decoration: BoxDecoration(
                   color: isSelected ? activeColor : Colors.transparent,
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
-                    color: isSelected ? activeColor : AppTheme.textSecondary.withValues(alpha: 0.2),
+                    color: isSelected
+                        ? activeColor
+                        : AppTheme.textSecondary.withValues(alpha: 0.2),
                     width: 1.5,
                   ),
                 ),
@@ -398,7 +410,8 @@ class _RecordListScreenState extends State<RecordListScreen>
             child: Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(12),
@@ -421,7 +434,7 @@ class _RecordListScreenState extends State<RecordListScreen>
                       const SizedBox(width: 8),
                       Text(
                         monthStr,
-                        style: TextStyle(
+                        style: const TextStyle(
                           color: AppTheme.textPrimary,
                           fontWeight: FontWeight.w900,
                           fontSize: 15,
@@ -452,7 +465,7 @@ class _RecordListScreenState extends State<RecordListScreen>
       }
 
       final guest = _guestMap[gift.guestId]; // 修复：这里应该是 guestId 而不是 id
-      
+
       // 构建动画
       final animation = Tween<double>(begin: 0, end: 1).animate(
         CurvedAnimation(
@@ -483,7 +496,8 @@ class _RecordListScreenState extends State<RecordListScreen>
     }
 
     return SliverPadding(
-      padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacingL, vertical: AppTheme.spacingS),
+      padding: const EdgeInsets.symmetric(
+          horizontal: AppTheme.spacingL, vertical: AppTheme.spacingS),
       sliver: SliverList(
         delegate: SliverChildBuilderDelegate(
           (context, index) => listItems[index],
@@ -494,145 +508,28 @@ class _RecordListScreenState extends State<RecordListScreen>
   }
 
   Widget _buildGiftItem(Gift gift, Guest? guest) {
-    final guestName = guest?.name ?? '未知联系人';
-    final itemColor = gift.isReceived ? AppTheme.primaryColor : AppTheme.accentColor;
-    final solarDate = DateFormat('MM-dd').format(gift.date); // 缩短日期显示，因为月份已经在标题了
+    final itemColor =
+        gift.isReceived ? AppTheme.primaryColor : AppTheme.accentColor;
+    final solarDate = DateFormat('MM-dd').format(gift.date);
     final lunarDate = LunarUtils.getLunarDateString(gift.date);
-    
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.02),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(20),
-          onTap: () async {
-            if (!await _verifySecurityLock()) return;
-            _showGiftDetail(gift, guest);
-          },
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                // 左侧图标：更具设计感的容器
-                Container(
-                  width: 52,
-                  height: 52,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        itemColor.withValues(alpha: 0.12),
-                        itemColor.withValues(alpha: 0.04),
-                      ],
-                    ),
-                    borderRadius: BorderRadius.circular(18),
-                  ),
-                  child: Icon(
-                    gift.isReceived ? Icons.move_to_inbox_rounded : Icons.outbox_rounded,
-                    color: itemColor,
-                    size: 24,
-                  ),
-                ),
-                const SizedBox(width: 16),
-                // 中间信息：清晰的层级
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildHighlightedText(
-                        guestName,
-                        const TextStyle(
-                          fontWeight: FontWeight.w900,
-                          fontSize: 16,
-                          color: AppTheme.textPrimary,
-                          letterSpacing: -0.5,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: itemColor.withValues(alpha: 0.06),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Text(
-                              gift.eventType,
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                                color: itemColor.withValues(alpha: 0.8),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            solarDate,
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: AppTheme.textSecondary.withValues(alpha: 0.5),
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                          if (lunarDate.isNotEmpty) ...[
-                            Text(
-                              ' · $lunarDate',
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: AppTheme.textSecondary.withValues(alpha: 0.4),
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                // 右侧金额：醒目加粗
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    PrivacyAwareText(
-                      '${gift.isReceived ? "+" : "-"}¥${gift.amount.toStringAsFixed(0)}',
-                      style: TextStyle(
-                        fontSize: 19,
-                        fontWeight: FontWeight.w900,
-                        color: itemColor,
-                        letterSpacing: -0.5,
-                      ),
-                    ),
-                    if (gift.note != null && gift.note!.isNotEmpty)
-                      const Icon(
-                        Icons.notes_rounded,
-                        size: 14,
-                        color: Colors.grey,
-                      ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
+
+    return RecordSummaryCard(
+      gift: gift,
+      guest: guest,
+      solarDate: solarDate,
+      lunarDate: lunarDate,
+      itemColor: itemColor,
+      onTap: () async {
+        if (!await _verifySecurityLock()) return;
+        _showGiftDetail(gift, guest);
+      },
     );
   }
 
   void _showGiftDetail(Gift gift, Guest? guest) {
     final guestName = guest?.name ?? '未知联系人';
-    final itemColor = gift.isReceived ? AppTheme.primaryColor : AppTheme.accentColor;
+    final itemColor =
+        gift.isReceived ? AppTheme.primaryColor : AppTheme.accentColor;
 
     showModalBottomSheet(
       context: context,
@@ -722,7 +619,8 @@ class _RecordListScreenState extends State<RecordListScreen>
                       final result = await Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) => AddRecordScreen(editingGift: gift, editingGuest: guest),
+                          builder: (context) => AddRecordScreen(
+                              editingGift: gift, editingGuest: guest),
                         ),
                       );
                       if (result == true) {
@@ -796,7 +694,8 @@ class _RecordListScreenState extends State<RecordListScreen>
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('确认删除'),
-        content: Text('确定要删除这条记录吗？\n\n$guestName · ${gift.eventType}\n¥${gift.amount.toStringAsFixed(0)}'),
+        content: Text(
+            '确定要删除这条记录吗？\n\n$guestName · ${gift.eventType}\n¥${gift.amount.toStringAsFixed(0)}'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -804,14 +703,17 @@ class _RecordListScreenState extends State<RecordListScreen>
           ),
           FilledButton(
             onPressed: () async {
+              final navigator = Navigator.of(context);
+              final messenger = ScaffoldMessenger.of(context);
+
               await _db.deleteGift(gift.id!);
-              if (mounted) {
-                Navigator.pop(context);
-                _loadData();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('已删除')),
-                );
-              }
+              if (!mounted) return;
+
+              navigator.pop();
+              _loadData();
+              messenger.showSnackBar(
+                const SnackBar(content: Text('已删除')),
+              );
             },
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             child: const Text('删除'),
@@ -820,47 +722,6 @@ class _RecordListScreenState extends State<RecordListScreen>
       ),
     );
   }
-
-  Widget _buildHighlightedText(String text, TextStyle baseStyle) {
-    if (_searchQuery.isEmpty) {
-      return Text(text, style: baseStyle);
-    }
-
-    final spans = <TextSpan>[];
-    final lowerText = text.toLowerCase();
-    int currentIndex = 0;
-
-    while (currentIndex < text.length) {
-      final matchIndex = lowerText.indexOf(_searchQuery, currentIndex);
-
-      if (matchIndex == -1) {
-        spans.add(TextSpan(
-          text: text.substring(currentIndex),
-          style: baseStyle,
-        ));
-        break;
-      }
-
-      if (matchIndex > currentIndex) {
-        spans.add(TextSpan(
-          text: text.substring(currentIndex, matchIndex),
-          style: baseStyle,
-        ));
-      }
-
-      spans.add(TextSpan(
-        text: text.substring(matchIndex, matchIndex + _searchQuery.length),
-        style: baseStyle.copyWith(
-          backgroundColor: _getAccentColor().withValues(alpha: 0.2),
-          fontWeight: FontWeight.w900,
-        ),
-      ));
-
-      currentIndex = matchIndex + _searchQuery.length;
-    }
-
-    return RichText(
-      text: TextSpan(children: spans),
-    );
-  }
 }
+
+
