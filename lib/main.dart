@@ -2,19 +2,26 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
-import 'package:flutter_native_splash/flutter_native_splash.dart';  // 启动页优化
+import 'package:flutter_native_splash/flutter_native_splash.dart'; // 启动页优化
 import 'theme/app_theme.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/statistics_screen.dart';
-import 'screens/add_record_screen.dart';
 import 'screens/settings_screen.dart';
 import 'services/notification_service.dart';
 import 'services/security_service.dart';
 import 'services/storage_service.dart';
 import 'services/config_service.dart';
+import 'models/update_target.dart';
+import 'services/update/app_build_info_service.dart';
+import 'services/update/update_controller.dart';
+import 'services/update/update_prompt_policy.dart';
+import 'services/update/update_repository.dart';
+import 'services/update/update_ui_coordinator.dart';
+import 'widgets/update/update_prompt_dialog.dart';
 
 // 条件导入 - 仅桌面端需要初始化
-import 'services/db_init_native.dart' if (dart.library.js_interop) 'services/db_init_stub.dart' as db_init;
+import 'services/db_init_native.dart'
+    if (dart.library.js_interop) 'services/db_init_stub.dart' as db_init;
 
 void main() async {
   // 1. 提前初始化 Flutter 绑定
@@ -28,7 +35,7 @@ void main() async {
 
   // 设置系统UI样式 - 沉浸式状态栏，与应用背景色一致
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-    statusBarColor: Color(0xFFFAF8F5),  // AppTheme.backgroundColor（温暖米白）
+    statusBarColor: Color(0xFFFAF8F5), // AppTheme.backgroundColor（温暖米白）
     statusBarIconBrightness: Brightness.dark,
     statusBarBrightness: Brightness.light,
     systemNavigationBarColor: Color(0xFFFAF8F5),
@@ -73,6 +80,12 @@ class GiftMoneyTrackerApp extends StatelessWidget {
         // 使用 ChangeNotifierProvider 延迟创建，避免启动时立即实例化
         ChangeNotifierProvider(create: (_) => StorageService()),
         ChangeNotifierProvider(create: (_) => SecurityService()),
+        ChangeNotifierProvider(
+          create: (_) => UpdateController(
+            repository: UpdateRepository(),
+            appBuildInfoService: const AppBuildInfoService(),
+          ),
+        ),
       ],
       child: MaterialApp(
         title: '随礼记',
@@ -98,18 +111,49 @@ class GiftMoneyTrackerApp extends StatelessWidget {
 }
 
 class MainNavigation extends StatefulWidget {
-  const MainNavigation({super.key});
+  const MainNavigation({
+    super.key,
+    this.screens,
+    this.promptPresenter = _defaultUpdatePromptPresenter,
+  });
+
+  final List<Widget>? screens;
+  final UpdatePromptPresenter promptPresenter;
 
   @override
   State<MainNavigation> createState() => _MainNavigationState();
 }
 
+typedef UpdatePromptPresenter = Future<UpdatePromptDialogResult?> Function(
+  BuildContext context,
+  UpdateTarget target,
+  VoidCallback onShown,
+);
+
+Future<UpdatePromptDialogResult?> _defaultUpdatePromptPresenter(
+  BuildContext context,
+  UpdateTarget target,
+  VoidCallback onShown,
+) {
+  return showDialog<UpdatePromptDialogResult>(
+    context: context,
+    builder: (_) => UpdatePromptDialog(
+      target: target,
+      onShown: onShown,
+    ),
+  );
+}
+
 class _MainNavigationState extends State<MainNavigation> {
   int _currentIndex = 0;
+  UpdateController? _updateController;
+  bool _didScheduleStartupUpdateCheck = false;
+  final UpdatePromptCoordinator _updatePromptCoordinator =
+      UpdatePromptCoordinator();
   final List<_NavItem> _navItems = [
-    _NavItem(label: '首页', icon: Icons.home_rounded),
-    _NavItem(label: '统计', icon: Icons.bar_chart_rounded),
-    _NavItem(label: '设置', icon: Icons.settings_rounded),
+    const _NavItem(label: '首页', icon: Icons.home_rounded),
+    const _NavItem(label: '统计', icon: Icons.bar_chart_rounded),
+    const _NavItem(label: '设置', icon: Icons.settings_rounded),
   ];
 
   // 缓存屏幕实例，避免每次访问都创建新实例
@@ -120,22 +164,99 @@ class _MainNavigationState extends State<MainNavigation> {
   void initState() {
     super.initState();
     // 初始化屏幕列表（只创建一次）
-    _screens = [
-      const DashboardScreen(),
-      const StatisticsScreen(),
-      const SettingsScreen(),
-    ];
+    _screens = widget.screens ??
+        [
+          const DashboardScreen(),
+          const StatisticsScreen(),
+          const SettingsScreen(),
+        ];
   }
 
-  // 打开添加记录页面
-  Future<void> _openAddRecord() async {
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => const AddRecordScreen(),
-      ),
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    if (_updateController == null) {
+      _updateController = context.read<UpdateController>();
+      _updateController!.addListener(_handleUpdateControllerChanged);
+    }
+
+    if (!_didScheduleStartupUpdateCheck) {
+      _didScheduleStartupUpdateCheck = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _updateController?.checkForUpdates(source: UpdateCheckSource.startup);
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _updateController?.removeListener(_handleUpdateControllerChanged);
+    super.dispose();
+  }
+
+  void _handleUpdateControllerChanged() {
+    final controller = _updateController;
+    if (!mounted || controller == null) {
+      return;
+    }
+
+    final state = controller.state;
+    final target = state.target;
+    final dialogKey = _updatePromptCoordinator.beginPresentation(state);
+    if (dialogKey == null || target == null) {
+      return;
+    }
+
+    _presentUpdatePrompt(target: target, dialogKey: dialogKey);
+  }
+
+  Future<void> _presentUpdatePrompt({
+    required UpdateTarget target,
+    required String dialogKey,
+  }) async {
+    final controller = _updateController;
+    if (controller == null) {
+      return;
+    }
+
+    try {
+      final result = await widget.promptPresenter(
+        context,
+        target,
+        () {
+          controller.markCurrentTargetPresented();
+        },
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      if (result?.ignoreCurrentVersion == true) {
+        await controller.ignoreCurrentTarget();
+      }
+
+      if (result?.action == UpdatePromptDialogAction.install) {
+        final message = await installCurrentUpdateAndCollectMessage(controller);
+        if (!mounted) {
+          return;
+        }
+        _showInstallFeedback(message);
+      }
+    } finally {
+      _updatePromptCoordinator.endPresentation();
+    }
+  }
+
+  void _showInstallFeedback(String? message) {
+    if (message == null || message.isEmpty) {
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
     );
-    // 不再需要手动刷新，StorageService 会通过 notifyListeners() 自动触发页面刷新
   }
 
   void _onTabSelected(int index) {
@@ -196,11 +317,6 @@ class _MainNavigationState extends State<MainNavigation> {
   @override
   Widget build(BuildContext context) {
     const dockBottomPadding = 12.0;
-    const dockHeight = 64.0;
-    const fabSpacing = 12.0;
-    final bottomInset = MediaQuery.of(context).padding.bottom;
-    final dockSafeBottom = bottomInset > dockBottomPadding ? bottomInset : dockBottomPadding;
-    final fabBottomOffset = dockSafeBottom + dockHeight + fabSpacing;
     return Scaffold(
       // extendBody 移除，避免与子页面 Scaffold 冲突导致内容不可见
       backgroundColor: AppTheme.backgroundColor,
@@ -217,7 +333,7 @@ class _MainNavigationState extends State<MainNavigation> {
             right: 0,
             bottom: 0,
             child: SafeArea(
-              minimum: EdgeInsets.only(bottom: dockBottomPadding),
+              minimum: const EdgeInsets.only(bottom: dockBottomPadding),
               child: Center(
                 child: RepaintBoundary(
                   child: _buildDynamicDock(),
