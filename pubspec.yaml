@@ -32,13 +32,16 @@ dependencies:
   web: ^0.5.1  # Web API 支持（IndexedDB）
   url_launcher: ^6.2.5
   font_awesome_flutter: ^10.7.0
+  flutter_native_splash: ^2.4.4  # 启动页优化（降级以兼容 excel)
+  dio: ^5.9.0
+  package_info_plus: ^8.3.1
+  open_filex: ^4.7.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^4.0.0
   flutter_launcher_icons: ^0.13.1
-  flutter_native_splash: ^2.4.4  # 启动页优化（降级以兼容 excel）
 
 flutter_launcher_icons:
   android: "launcher_icon"
@@ -88,3 +91,4 @@ flutter_native_splash:
   # 图标居中
   android_gravity: center
   ios_content_mode: center
+
