@@ -79,6 +79,7 @@ releases/android/*
 releases/android/v1.3.1/*
 *.apk
 !releases/android/v1.3.1/gift_ledger_v1.3.1_arm64_build3310.apk
+!releases/android/v1.3.1/gift_ledger_v1.3.1_armeabi-v7a_build3312.apk
 *.aab
 
 # Build directory
