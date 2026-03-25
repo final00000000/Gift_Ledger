@@ -192,5 +192,26 @@ void main() {
       expect(controller.installCount, 1);
       expect(message, '安装器已启动');
     });
+
+    test('安装器异常时会优先透传明确错误文案', () async {
+      final controller = _SpyUpdateController()
+        ..emit(
+          const UpdateState(
+            status: UpdateStateStatus.available,
+            target: UpdateTarget(
+              channel: UpdateChannel.stable,
+              platform: UpdatePlatform.android,
+              version: '1.3.0',
+              buildNumber: 13,
+            ),
+            error: UpdateInstallerException('下载更新包超时，请检查网络后重试。'),
+          ),
+        );
+
+      final message = await installCurrentUpdateAndCollectMessage(controller);
+
+      expect(controller.installCount, 1);
+      expect(message, '下载更新包超时，请检查网络后重试。');
+    });
   });
 }
