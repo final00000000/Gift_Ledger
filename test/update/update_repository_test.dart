@@ -46,6 +46,7 @@ List<Map<String, dynamic>> _buildReleasesJson({
               'https://github.com/final00000000/Gift_Ledger/releases/download/v$stableVersion/gift_ledger_v${stableVersion}_armeabi.apk',
           'digest':
               'sha256:1111111111111111111111111111111111111111111111111111111111111111',
+          'size': 20300781,
         },
         {
           'name': 'gift_ledger_v${stableVersion}_arm64.apk',
@@ -53,6 +54,7 @@ List<Map<String, dynamic>> _buildReleasesJson({
               'https://github.com/final00000000/Gift_Ledger/releases/download/v$stableVersion/gift_ledger_v${stableVersion}_arm64.apk',
           'digest':
               'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+          'size': 26780586,
         },
       ],
     },
@@ -140,6 +142,54 @@ void main() {
         UpdateRepository.jsDelivrManifestUrl,
       ],
     );
+  });
+
+  test('UpdateRepository 会优先选择体积更小的 arm64 APK 资产', () async {
+    final repository = UpdateRepository(
+      configService: configService,
+      fetcher: (url, options) async {
+        if (url == UpdateRepository.githubReleasesApiUrl) {
+          return jsonEncode([
+            {
+              'tag_name': 'v1.3.1',
+              'draft': false,
+              'prerelease': false,
+              'body': '体积优化测试',
+              'assets': [
+                {
+                  'name': 'gift_ledger_v1.3.1_arm64_big.apk',
+                  'browser_download_url':
+                      'https://github.com/final00000000/Gift_Ledger/releases/download/v1.3.1/gift_ledger_v1.3.1_arm64_big.apk',
+                  'digest':
+                      'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+                  'size': 26780586,
+                },
+                {
+                  'name': 'gift_ledger_v1.3.1_arm64_fasttest.apk',
+                  'browser_download_url':
+                      'https://github.com/final00000000/Gift_Ledger/releases/download/v1.3.1/gift_ledger_v1.3.1_arm64_fasttest.apk',
+                  'digest':
+                      'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+                  'size': 11731255,
+                },
+              ],
+            },
+          ]);
+        }
+
+        throw DioException(
+          requestOptions: RequestOptions(path: url),
+          error: '404',
+        );
+      },
+    );
+
+    final manifest = await repository.fetchManifest();
+
+    expect(manifest.stable.android?.downloadUrl,
+        'https://github.com/final00000000/Gift_Ledger/releases/download/v1.3.1/gift_ledger_v1.3.1_arm64_fasttest.apk');
+    expect(manifest.stable.android?.sha256,
+        'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb');
   });
 
   test('UpdateRepository 会在 manifest 全部失败后回退 GitHub Releases API', () async {
