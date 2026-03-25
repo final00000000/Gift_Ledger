@@ -1,0 +1,476 @@
+name: Publish Updates
+
+on:
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: 发布通道
+        required: true
+        type: choice
+        options:
+          - stable
+          - beta
+        default: stable
+      release_tag:
+        description: 可选，自定义 Release Tag（默认自动生成）
+        required: false
+        type: string
+      release_notes:
+        description: 可选，本次版本说明（用于 Release 与 manifest notes）
+        required: false
+        type: string
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+env:
+  DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+
+jobs:
+  android:
+    name: Build Android Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Resolve release metadata
+        id: meta
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_CHANNEL: ${{ github.event.inputs.channel }}
+          INPUT_RELEASE_TAG: ${{ github.event.inputs.release_tag }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          python - <<'PY'
+          import os
+          import pathlib
+          import re
+
+          text = pathlib.Path("pubspec.yaml").read_text(encoding="utf-8")
+          name_match = re.search(r"^name:\s*([^\s]+)", text, re.M)
+          version_match = re.search(r"^version:\s*([^\s]+)", text, re.M)
+          if not name_match or not version_match:
+              raise SystemExit("name/version not found in pubspec.yaml")
+
+          app_name = name_match.group(1).strip()
+          full_version = version_match.group(1).strip()
+          semver, _, build_number = full_version.partition("+")
+          event_name = os.environ.get("EVENT_NAME", "").strip()
+          input_channel = os.environ.get("INPUT_CHANNEL", "").strip().lower()
+          ref_name = os.environ.get("REF_NAME", "").strip()
+
+          if event_name == "push" and ref_name.startswith("v"):
+              channel = "beta" if "beta" in ref_name.lower() else "stable"
+          else:
+              channel = input_channel or "stable"
+
+          release_tag = os.environ.get("INPUT_RELEASE_TAG", "").strip()
+          if not release_tag:
+              if event_name == "push" and ref_name:
+                  release_tag = ref_name
+              else:
+                  release_tag = f"v{semver}"
+                  if channel == "beta" and "beta" not in release_tag.lower():
+                      release_tag = f"{release_tag}-beta"
+
+          asset_name = f"{app_name}-{channel}-android-v{semver}-build{build_number}.apk"
+
+          output_path = pathlib.Path(os.environ["GITHUB_OUTPUT"])
+          values = {
+              "app_name": app_name,
+              "semver": semver,
+              "build_number": build_number or "0",
+              "channel": channel,
+              "release_tag": release_tag,
+              "asset_name": asset_name,
+          }
+          with output_path.open("a", encoding="utf-8") as stream:
+              for key, value in values.items():
+                  stream.write(f"{key}={value}\n")
+          PY
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build Android APK
+        run: flutter build apk --release
+
+      - name: Prepare Android asset
+        id: asset
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/release-assets build/release-metadata
+          asset_path="build/release-assets/${{ steps.meta.outputs.asset_name }}"
+          cp build/app/outputs/flutter-apk/app-release.apk "$asset_path"
+          sha256="$(sha256sum "$asset_path" | awk '{print $1}')"
+          echo "asset_path=$asset_path" >> "$GITHUB_OUTPUT"
+          echo "sha256=$sha256" >> "$GITHUB_OUTPUT"
+
+      - name: Ensure Release exists
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.meta.outputs.release_tag }}
+          CHANNEL: ${{ steps.meta.outputs.channel }}
+          RELEASE_NOTES: ${{ github.event.inputs.release_notes }}
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Release $RELEASE_TAG already exists"
+            exit 0
+          fi
+
+          prerelease_flag=""
+          if [ "$CHANNEL" = "beta" ]; then
+            prerelease_flag="--prerelease"
+          fi
+
+          notes="${RELEASE_NOTES:-}"
+          if [ -z "$notes" ]; then
+            notes="Gift Ledger ${CHANNEL} ${RELEASE_TAG}"
+          fi
+
+          gh release create "$RELEASE_TAG" \
+            --title "Gift Ledger ${RELEASE_TAG}" \
+            $prerelease_flag \
+            --notes "$notes" || gh release view "$RELEASE_TAG"
+
+      - name: Upload Android asset to Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.meta.outputs.release_tag }}
+          ASSET_NAME: ${{ steps.meta.outputs.asset_name }}
+          ASSET_PATH: ${{ steps.asset.outputs.asset_path }}
+        run: |
+          set -euo pipefail
+          gh release upload "$RELEASE_TAG" "$ASSET_PATH#$ASSET_NAME" --clobber
+
+      - name: Write Android metadata
+        shell: bash
+        env:
+          CHANNEL: ${{ steps.meta.outputs.channel }}
+          VERSION: ${{ steps.meta.outputs.semver }}
+          BUILD_NUMBER: ${{ steps.meta.outputs.build_number }}
+          RELEASE_TAG: ${{ steps.meta.outputs.release_tag }}
+          ASSET_NAME: ${{ steps.meta.outputs.asset_name }}
+          SHA256: ${{ steps.asset.outputs.sha256 }}
+          RELEASE_NOTES: ${{ github.event.inputs.release_notes }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import pathlib
+
+          notes = (os.environ.get("RELEASE_NOTES") or "").strip()
+          if not notes:
+              notes = f"Android {os.environ['CHANNEL']} {os.environ['VERSION']}"
+
+          metadata = {
+              "channel": os.environ["CHANNEL"],
+              "platform": "android",
+              "version": os.environ["VERSION"],
+              "buildNumber": int(os.environ["BUILD_NUMBER"]),
+              "packageType": "apk",
+              "downloadUrl": f"https://github.com/{os.environ['REPOSITORY']}/releases/download/{os.environ['RELEASE_TAG']}/{os.environ['ASSET_NAME']}",
+              "sha256": os.environ["SHA256"],
+              "notes": notes,
+          }
+
+          path = pathlib.Path("build/release-metadata/android.json")
+          path.write_text(
+              json.dumps(metadata, ensure_ascii=False, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Upload Android metadata artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-metadata-android
+          path: build/release-metadata/android.json
+          if-no-files-found: error
+
+  windows:
+    name: Build Windows Installer
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Resolve release metadata
+        id: meta
+        shell: pwsh
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_CHANNEL: ${{ github.event.inputs.channel }}
+          INPUT_RELEASE_TAG: ${{ github.event.inputs.release_tag }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          $text = Get-Content "pubspec.yaml" -Raw
+          $nameMatch = [regex]::Match($text, '^name:\s*([^\s]+)', 'Multiline')
+          $versionMatch = [regex]::Match($text, '^version:\s*([^\s]+)', 'Multiline')
+          if (-not $nameMatch.Success -or -not $versionMatch.Success) {
+            throw "name/version not found in pubspec.yaml"
+          }
+
+          $appName = $nameMatch.Groups[1].Value.Trim()
+          $fullVersion = $versionMatch.Groups[1].Value.Trim()
+          $parts = $fullVersion.Split('+', 2)
+          $semver = $parts[0]
+          $buildNumber = if ($parts.Length -gt 1 -and $parts[1]) { $parts[1] } else { '0' }
+          $channel = $env:INPUT_CHANNEL.Trim().ToLower()
+          if ($env:EVENT_NAME -eq 'push' -and $env:REF_NAME.StartsWith('v')) {
+            $channel = if ($env:REF_NAME.ToLower().Contains('beta')) { 'beta' } else { 'stable' }
+          }
+          if ([string]::IsNullOrWhiteSpace($channel)) {
+            $channel = 'stable'
+          }
+
+          $releaseTag = $env:INPUT_RELEASE_TAG.Trim()
+          if ([string]::IsNullOrWhiteSpace($releaseTag)) {
+            if ($env:EVENT_NAME -eq 'push' -and -not [string]::IsNullOrWhiteSpace($env:REF_NAME)) {
+              $releaseTag = $env:REF_NAME
+            } else {
+              $releaseTag = "v$semver"
+              if ($channel -eq 'beta' -and -not $releaseTag.ToLower().Contains('beta')) {
+                $releaseTag = "$releaseTag-beta"
+              }
+            }
+          }
+
+          $assetBaseName = "$appName-$channel-windows-v$semver-build$buildNumber-setup"
+          $assetName = "$assetBaseName.exe"
+
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "app_name=$appName"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "semver=$semver"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "build_number=$buildNumber"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "channel=$channel"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "release_tag=$releaseTag"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "asset_base_name=$assetBaseName"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "asset_name=$assetName"
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build Windows release
+        run: flutter build windows --release
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Build Windows installer
+        id: asset
+        shell: pwsh
+        env:
+          APP_VERSION: ${{ steps.meta.outputs.semver }}
+          APP_BUILD: ${{ steps.meta.outputs.build_number }}
+          APP_CHANNEL: ${{ steps.meta.outputs.channel }}
+          OUTPUT_BASE_NAME: ${{ steps.meta.outputs.asset_base_name }}
+        run: |
+          $sourceDir = (Resolve-Path "build/windows/x64/runner/Release").Path
+          $outputDir = Join-Path $env:GITHUB_WORKSPACE "build/windows/installer"
+          New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
+
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          & $iscc `
+            "/DAppVersion=$env:APP_VERSION" `
+            "/DAppBuild=$env:APP_BUILD" `
+            "/DAppChannel=$env:APP_CHANNEL" `
+            "/DSourceDir=$sourceDir" `
+            "/DOutputDir=$outputDir" `
+            "/DOutputBaseName=$env:OUTPUT_BASE_NAME" `
+            "windows/installer/GiftLedger.iss"
+
+          $assetPath = Join-Path $outputDir "$env:OUTPUT_BASE_NAME.exe"
+          $hash = (Get-FileHash -Path $assetPath -Algorithm SHA256).Hash.ToLowerInvariant()
+
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "asset_path=$assetPath"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "sha256=$hash"
+
+      - name: Ensure Release exists
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.meta.outputs.release_tag }}
+          CHANNEL: ${{ steps.meta.outputs.channel }}
+          RELEASE_NOTES: ${{ github.event.inputs.release_notes }}
+        run: |
+          gh release view $env:RELEASE_TAG *> $null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "Release $env:RELEASE_TAG already exists"
+            exit 0
+          }
+
+          $args = @('release', 'create', $env:RELEASE_TAG, '--title', "Gift Ledger $env:RELEASE_TAG")
+          if ($env:CHANNEL -eq 'beta') {
+            $args += '--prerelease'
+          }
+
+          $notes = $env:RELEASE_NOTES
+          if ([string]::IsNullOrWhiteSpace($notes)) {
+            $notes = "Gift Ledger $($env:CHANNEL) $($env:RELEASE_TAG)"
+          }
+          $args += @('--notes', $notes)
+
+          gh @args
+          if ($LASTEXITCODE -ne 0) {
+            gh release view $env:RELEASE_TAG
+          }
+
+      - name: Upload Windows asset to Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.meta.outputs.release_tag }}
+          ASSET_NAME: ${{ steps.meta.outputs.asset_name }}
+          ASSET_PATH: ${{ steps.asset.outputs.asset_path }}
+        run: |
+          gh release upload $env:RELEASE_TAG "$env:ASSET_PATH#$env:ASSET_NAME" --clobber
+
+      - name: Write Windows metadata
+        shell: pwsh
+        env:
+          CHANNEL: ${{ steps.meta.outputs.channel }}
+          VERSION: ${{ steps.meta.outputs.semver }}
+          BUILD_NUMBER: ${{ steps.meta.outputs.build_number }}
+          RELEASE_TAG: ${{ steps.meta.outputs.release_tag }}
+          ASSET_NAME: ${{ steps.meta.outputs.asset_name }}
+          SHA256: ${{ steps.asset.outputs.sha256 }}
+          RELEASE_NOTES: ${{ github.event.inputs.release_notes }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          $notes = $env:RELEASE_NOTES
+          if ([string]::IsNullOrWhiteSpace($notes)) {
+            $notes = "Windows $($env:CHANNEL) $($env:VERSION)"
+          }
+
+          $metadata = [ordered]@{
+            channel = $env:CHANNEL
+            platform = 'windows'
+            version = $env:VERSION
+            buildNumber = [int]$env:BUILD_NUMBER
+            packageType = 'exe'
+            downloadUrl = "https://github.com/$($env:REPOSITORY)/releases/download/$($env:RELEASE_TAG)/$($env:ASSET_NAME)"
+            sha256 = $env:SHA256
+            notes = $notes
+          }
+
+          $path = Join-Path $env:GITHUB_WORKSPACE 'build/release-metadata/windows.json'
+          New-Item -ItemType Directory -Force -Path (Split-Path $path) | Out-Null
+          $metadata | ConvertTo-Json -Depth 4 | Set-Content -Path $path -Encoding UTF8
+
+      - name: Upload Windows metadata artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-metadata-windows
+          path: build/release-metadata/windows.json
+          if-no-files-found: error
+
+  manifest:
+    name: Publish Update Manifest
+    runs-on: ubuntu-latest
+    needs:
+      - android
+      - windows
+
+    steps:
+      - name: Checkout default branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEFAULT_BRANCH }}
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Download release metadata artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-metadata-*
+          path: build/release-metadata
+          merge-multiple: true
+
+      - name: Merge release matrix input
+        run: |
+          python - <<'PY'
+          import json
+          import pathlib
+
+          metadata_dir = pathlib.Path("build/release-metadata")
+          entries = []
+          for path in sorted(metadata_dir.glob("*.json")):
+              entries.append(json.loads(path.read_text(encoding="utf-8")))
+
+          if not entries:
+              raise SystemExit("No release metadata found")
+
+          matrix_path = pathlib.Path("build/update_release_matrix.json")
+          matrix_path.write_text(
+              json.dumps(
+                  {
+                      "schemaVersion": 1,
+                      "entries": entries,
+                  },
+                  ensure_ascii=False,
+                  indent=2,
+              ) + "\n",
+              encoding="utf-8",
+          )
+          print(matrix_path.read_text(encoding="utf-8"))
+          PY
+
+      - name: Generate update manifest
+        run: |
+          python tool/generate_update_manifest.py \
+            --input build/update_release_matrix.json \
+            --output releases/update-manifest.json
+
+      - name: Validate generated manifest
+        run: python -m json.tool releases/update-manifest.json > /dev/null
+
+      - name: Commit manifest to default branch
+        run: |
+          if git diff --quiet -- releases/update-manifest.json; then
+            echo "No manifest changes to commit"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add releases/update-manifest.json
+          git commit -m "chore: sync update manifest"
+          git push origin "HEAD:${DEFAULT_BRANCH}"

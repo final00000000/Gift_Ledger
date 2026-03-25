@@ -1,0 +1,189 @@
+#!/usr/bin/env python3
+"""根据 release matrix 生成客户端可消费的 update manifest。"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+
+ALLOWED_CHANNELS = ("stable", "beta")
+ALLOWED_PLATFORMS = ("android", "windows")
+ALLOWED_PACKAGE_TYPES = ("apk", "exe", "msix")
+REQUIRED_ENTRY_FIELDS = (
+    "channel",
+    "platform",
+    "version",
+    "buildNumber",
+    "packageType",
+    "downloadUrl",
+    "sha256",
+    "notes",
+)
+
+
+class ManifestGenerationError(ValueError):
+    """manifest 生成失败时抛出的业务异常。"""
+
+
+def _require_object(value: Any, path: str) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise ManifestGenerationError(f'"{path}" 必须是对象。')
+    return value
+
+
+def _require_list(value: Any, path: str) -> list[Any]:
+    if not isinstance(value, list):
+        raise ManifestGenerationError(f'"{path}" 必须是数组。')
+    return value
+
+
+def _require_non_empty_string(value: Any, path: str) -> str:
+    if not isinstance(value, str):
+        raise ManifestGenerationError(f'"{path}" 必须是非空字符串。')
+
+    trimmed = value.strip()
+    if not trimmed:
+        raise ManifestGenerationError(f'"{path}" 必须是非空字符串。')
+    return trimmed
+
+
+def _require_int(value: Any, path: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ManifestGenerationError(f'"{path}" 必须是整数。')
+    return value
+
+
+def _validate_entry(entry: dict[str, Any], index: int) -> dict[str, Any]:
+    path = f"entries[{index}]"
+
+    for field in REQUIRED_ENTRY_FIELDS:
+        if field not in entry:
+            raise ManifestGenerationError(f'"{path}.{field}" 缺失。')
+
+    channel = _require_non_empty_string(entry["channel"], f"{path}.channel").lower()
+    if channel not in ALLOWED_CHANNELS:
+        raise ManifestGenerationError(
+            f'"{path}.channel" 仅支持: {", ".join(ALLOWED_CHANNELS)}。'
+        )
+
+    platform = _require_non_empty_string(entry["platform"], f"{path}.platform").lower()
+    if platform not in ALLOWED_PLATFORMS:
+        raise ManifestGenerationError(
+            f'"{path}.platform" 仅支持: {", ".join(ALLOWED_PLATFORMS)}。'
+        )
+
+    package_type = _require_non_empty_string(
+        entry["packageType"],
+        f"{path}.packageType",
+    ).lower()
+    if package_type not in ALLOWED_PACKAGE_TYPES:
+        raise ManifestGenerationError(
+            f'"{path}.packageType" 仅支持: {", ".join(ALLOWED_PACKAGE_TYPES)}。'
+        )
+
+    sha256 = _require_non_empty_string(entry["sha256"], f"{path}.sha256").lower()
+    if len(sha256) != 64 or any(ch not in "0123456789abcdef" for ch in sha256):
+        raise ManifestGenerationError(
+            f'"{path}.sha256" 必须是 64 位十六进制字符串。'
+        )
+
+    download_url = _require_non_empty_string(
+        entry["downloadUrl"],
+        f"{path}.downloadUrl",
+    )
+    if "://" not in download_url:
+        raise ManifestGenerationError(f'"{path}.downloadUrl" 必须是绝对 URL。')
+
+    return {
+        "channel": channel,
+        "platform": platform,
+        "version": _require_non_empty_string(entry["version"], f"{path}.version"),
+        "buildNumber": _require_int(entry["buildNumber"], f"{path}.buildNumber"),
+        "packageType": package_type,
+        "downloadUrl": download_url,
+        "sha256": sha256,
+        "notes": _require_non_empty_string(entry["notes"], f"{path}.notes"),
+    }
+
+
+def build_manifest(input_data: dict[str, Any]) -> dict[str, Any]:
+    payload = _require_object(input_data, "root")
+    schema_version = payload.get("schemaVersion", 1)
+    schema_version = _require_int(schema_version, "schemaVersion")
+    entries = _require_list(payload.get("entries"), "entries")
+
+    channels: dict[str, dict[str, dict[str, Any]]] = {
+        channel: {} for channel in ALLOWED_CHANNELS
+    }
+    seen_targets: set[tuple[str, str]] = set()
+
+    for index, raw_entry in enumerate(entries):
+        entry = _validate_entry(_require_object(raw_entry, f"entries[{index}]"), index)
+        target_key = (entry["channel"], entry["platform"])
+        if target_key in seen_targets:
+            raise ManifestGenerationError(
+                "检测到重复的 channel/platform 条目："
+                f" {entry['channel']}/{entry['platform']}。"
+            )
+        seen_targets.add(target_key)
+
+        channels[entry["channel"]][entry["platform"]] = {
+            "version": entry["version"],
+            "buildNumber": entry["buildNumber"],
+            "packageType": entry["packageType"],
+            "downloadUrl": entry["downloadUrl"],
+            "sha256": entry["sha256"],
+            "notes": entry["notes"],
+        }
+
+    return {
+        "schemaVersion": schema_version,
+        "generatedAt": datetime.now(timezone.utc)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z"),
+        "channels": channels,
+    }
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="生成 Gift Ledger 更新 manifest")
+    parser.add_argument("--input", required=True, help="release matrix 输入 JSON")
+    parser.add_argument("--output", required=True, help="manifest 输出路径")
+    return parser.parse_args()
+
+
+def main() -> int:
+    args = parse_args()
+    input_path = Path(args.input)
+    output_path = Path(args.output)
+
+    try:
+        input_data = json.loads(input_path.read_text(encoding="utf-8"))
+        manifest = build_manifest(input_data)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(
+            json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+    except FileNotFoundError as exc:
+        print(f"Error: 文件不存在：{exc.filename}", file=sys.stderr)
+        return 1
+    except json.JSONDecodeError as exc:
+        print(f"Error: 输入 JSON 非法：{exc}", file=sys.stderr)
+        return 1
+    except ManifestGenerationError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+
+    print(f"Manifest generated successfully: {output_path}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
