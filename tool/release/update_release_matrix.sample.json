@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "channel": "stable",
+      "platform": "android",
+      "version": "1.3.0",
+      "buildNumber": 1300,
+      "packageType": "apk",
+      "downloadUrl": "https://example.com/releases/gift_ledger-1.3.0-android.apk",
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "notes": "稳定版 Android 更新"
+    },
+    {
+      "channel": "stable",
+      "platform": "windows",
+      "version": "1.3.0",
+      "buildNumber": 1300,
+      "packageType": "exe",
+      "downloadUrl": "https://example.com/releases/gift_ledger-1.3.0-windows.exe",
+      "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "notes": "稳定版 Windows 安装包"
+    },
+    {
+      "channel": "beta",
+      "platform": "windows",
+      "version": "1.3.1-beta.2",
+      "buildNumber": 1312,
+      "packageType": "exe",
+      "downloadUrl": "https://example.com/releases/gift_ledger-1.3.1-beta.2-windows.exe",
+      "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "notes": "Beta 通道抢先体验新功能"
+    }
+  ]
+}

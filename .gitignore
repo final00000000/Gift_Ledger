@@ -70,7 +70,8 @@ build_release.bat
 *.bat
 
 # Release builds (APKs, etc.)
-releases/
+releases/*
+!releases/update-manifest.json
 *.apk
 *.aab
 
