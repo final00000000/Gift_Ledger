@@ -13,12 +13,18 @@ typedef UpdateManifestFetcher = Future<Object?> Function(
 );
 
 class UpdateRepository {
+  // 当前分支更新闭环测试使用独立 manifest，避免污染默认分支与 CDN 旧缓存。
+  static const String updateTestingRef = 'beat/update-flow';
+  static const String _updateTestingRefEncoded = 'beat%2Fupdate-flow';
+  static const String _updateManifestPath =
+      'releases/update-manifest.testing.json';
+
   static const String githubContentsApiUrl =
-      'https://api.github.com/repos/final00000000/Gift_Ledger/contents/releases/update-manifest.json?ref=master';
+      'https://api.github.com/repos/final00000000/Gift_Ledger/contents/$_updateManifestPath?ref=$_updateTestingRefEncoded';
   static const String jsDelivrManifestUrl =
-      'https://cdn.jsdelivr.net/gh/final00000000/Gift_Ledger@master/releases/update-manifest.json';
+      'https://cdn.jsdelivr.net/gh/final00000000/Gift_Ledger@$_updateTestingRefEncoded/$_updateManifestPath';
   static const String rawManifestUrl =
-      'https://raw.githubusercontent.com/final00000000/Gift_Ledger/master/releases/update-manifest.json';
+      'https://raw.githubusercontent.com/final00000000/Gift_Ledger/$updateTestingRef/$_updateManifestPath';
   static const String githubReleasesApiUrl =
       'https://api.github.com/repos/final00000000/Gift_Ledger/releases?per_page=20';
   static const String githubLatestReleasePageUrl =
@@ -283,22 +289,47 @@ class UpdateRepository {
   Map<String, dynamic>? _selectAndroidApkAsset(
     List<Map<String, dynamic>> assets,
   ) {
-    Map<String, dynamic>? fallback;
+    final apkAssets = <Map<String, dynamic>>[];
     for (final asset in assets) {
       final name = (asset['name'] as String?)?.toLowerCase() ?? '';
       final url =
           (asset['browser_download_url'] as String?)?.toLowerCase() ?? '';
       final isApk = name.endsWith('.apk') || url.endsWith('.apk');
-      if (!isApk) {
-        continue;
-      }
-
-      fallback ??= asset;
-      if (name.contains('arm64')) {
-        return asset;
+      if (isApk) {
+        apkAssets.add(asset);
       }
     }
-    return fallback;
+
+    if (apkAssets.isEmpty) {
+      return null;
+    }
+
+    final arm64Assets = apkAssets.where((asset) {
+      final name = (asset['name'] as String?)?.toLowerCase() ?? '';
+      return name.contains('arm64');
+    }).toList()
+      ..sort((left, right) {
+        final leftSize = _assetSizeOrMax(left);
+        final rightSize = _assetSizeOrMax(right);
+        return leftSize.compareTo(rightSize);
+      });
+
+    if (arm64Assets.isNotEmpty) {
+      return arm64Assets.first;
+    }
+
+    return apkAssets.first;
+  }
+
+  int _assetSizeOrMax(Map<String, dynamic> asset) {
+    final rawSize = asset['size'];
+    if (rawSize is int) {
+      return rawSize;
+    }
+    if (rawSize is String) {
+      return int.tryParse(rawSize) ?? 1 << 30;
+    }
+    return 1 << 30;
   }
 
   String? _extractSha256(String? digest) {
