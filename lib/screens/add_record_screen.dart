@@ -8,7 +8,8 @@ import '../theme/app_theme.dart';
 import '../widgets/custom_toast.dart';
 import '../widgets/custom_numpad.dart';
 import '../widgets/lunar_calendar_picker.dart';
-
+import '../widgets/add_record/record_note_field.dart';
+import '../utils/record_note_policy.dart';
 
 class AddRecordScreen extends StatefulWidget {
   final Gift? editingGift;
@@ -19,8 +20,9 @@ class AddRecordScreen extends StatefulWidget {
   final String? prefillEventType;
   final double? prefillAmount;
   final bool? prefillIsReceived;
-  final int? relatedGiftId;  // 关联的原记录ID
+  final int? relatedGiftId; // 关联的原记录ID
   final int? initialEventBookId; // 初始活动簿ID
+  final Object? storageService;
 
   const AddRecordScreen({
     super.key,
@@ -33,6 +35,7 @@ class AddRecordScreen extends StatefulWidget {
     this.prefillIsReceived,
     this.relatedGiftId,
     this.initialEventBookId,
+    this.storageService,
   });
 
   @override
@@ -40,10 +43,10 @@ class AddRecordScreen extends StatefulWidget {
 }
 
 class _AddRecordScreenState extends State<AddRecordScreen> {
-  final StorageService _db = StorageService();
+  late final dynamic _db;
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _noteController = TextEditingController();
-  
+
   String _amount = '0';
   bool _isReceived = true;
   String _eventType = EventTypes.wedding;
@@ -56,22 +59,24 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
 
   final LayerLink _nameLayerLink = LayerLink();
   OverlayEntry? _overlayEntry;
-  bool _showNumpad = false;  // 控制数字键盘显示状态
+  bool _showNumpad = false; // 控制数字键盘显示状态
   final FocusNode _nameFocusNode = FocusNode(); // 添加 FocusNode
   int? _eventBookId;
 
   @override
   void initState() {
     super.initState();
+    _db = widget.storageService ?? StorageService();
     _loadSettings();
     _loadGuests();
     _nameController.addListener(_onNameChanged);
     _nameFocusNode.addListener(_onFocusChanged);
-    
+
     // 如果是编辑模式，初始化数据
     if (widget.editingGift != null) {
       _initializeEditMode();
-    } else if (widget.prefillGuestName != null || widget.prefillAmount != null) {
+    } else if (widget.prefillGuestName != null ||
+        widget.prefillAmount != null) {
       // 预填模式（从清单页跳转）
       _initializePrefillMode();
     } else {
@@ -99,7 +104,7 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
   void _initializeEditMode() {
     final gift = widget.editingGift!;
     final guest = widget.editingGuest;
-    
+
     setState(() {
       _amount = gift.amount.toStringAsFixed(0);
       _isReceived = gift.isReceived;
@@ -109,7 +114,7 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
       if (gift.note != null) {
         _noteController.text = gift.note!;
       }
-      
+
       if (guest != null) {
         _nameController.text = guest.name;
         _relationship = guest.relationship;
@@ -126,10 +131,10 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
         }
       });
     } else {
-        // 获得焦点时，如果有内容则显示建议
-        if (_nameController.text.isNotEmpty && _filteredGuests.isNotEmpty) {
-            _showOverlay();
-        }
+      // 获得焦点时，如果有内容则显示建议
+      if (_nameController.text.isNotEmpty && _filteredGuests.isNotEmpty) {
+        _showOverlay();
+      }
     }
   }
 
@@ -202,12 +207,15 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
             child: Container(
               constraints: const BoxConstraints(maxHeight: 250),
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: AppTheme.primaryColor.withValues(alpha: 0.1)),
-                boxShadow: [
-                  BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 20, offset: const Offset(0, 10))
-                ]
-              ),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                      color: AppTheme.primaryColor.withValues(alpha: 0.1)),
+                  boxShadow: [
+                    BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.1),
+                        blurRadius: 20,
+                        offset: const Offset(0, 10))
+                  ]),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(20),
                 child: ListView.builder(
@@ -217,9 +225,12 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
                   itemBuilder: (context, index) {
                     final g = _filteredGuests[index];
                     return ListTile(
-                      leading: const Icon(Icons.person_search_rounded, color: AppTheme.primaryColor),
-                      title: Text(g.name, style: const TextStyle(fontWeight: FontWeight.w700)),
-                      subtitle: Text(g.relationship, style: const TextStyle(fontSize: 12)),
+                      leading: const Icon(Icons.person_search_rounded,
+                          color: AppTheme.primaryColor),
+                      title: Text(g.name,
+                          style: const TextStyle(fontWeight: FontWeight.w700)),
+                      subtitle: Text(g.relationship,
+                          style: const TextStyle(fontSize: 12)),
                       onTap: () {
                         _selectGuest(g);
                       },
@@ -305,17 +316,31 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
     }
   }
 
-  Widget _buildConfirmationRow(String label, String value, {bool isHighlight = false}) {
+  Widget _buildConfirmationRow(String label, String value,
+      {bool isHighlight = false}) {
     return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: TextStyle(color: AppTheme.textSecondary, fontWeight: FontWeight.w500)),
         Text(
-          value, 
-          style: TextStyle(
-            color: isHighlight ? AppTheme.primaryColor : AppTheme.textPrimary, 
-            fontWeight: isHighlight ? FontWeight.w900 : FontWeight.w700,
-            fontSize: isHighlight ? 24 : 16,
+          label,
+          style: const TextStyle(
+            color: AppTheme.textSecondary,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            value,
+            textAlign: TextAlign.end,
+            softWrap: !isHighlight,
+            maxLines: isHighlight ? 1 : 3,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: isHighlight ? AppTheme.primaryColor : AppTheme.textPrimary,
+              fontWeight: isHighlight ? FontWeight.w900 : FontWeight.w700,
+              fontSize: isHighlight ? 24 : 16,
+            ),
           ),
         ),
       ],
@@ -325,6 +350,8 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
   Future<void> _saveRecord() async {
     final name = _nameController.text.trim();
     final amountDouble = double.tryParse(_amount) ?? 0;
+    final noteError = validateRecordNoteForSave(_noteController.text);
+    final savedNote = normalizeRecordNoteForSave(_noteController.text);
 
     if (name.isEmpty) {
       CustomToast.show(context, '请输入联系人姓名', isError: true);
@@ -333,6 +360,11 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
 
     if (amountDouble <= 0) {
       CustomToast.show(context, '请输入有效金额', isError: true);
+      return;
+    }
+
+    if (noteError != null) {
+      CustomToast.show(context, noteError, isError: true);
       return;
     }
 
@@ -346,7 +378,7 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (context) => Container(
-        padding: EdgeInsets.all(AppTheme.spacingL),
+        padding: const EdgeInsets.all(AppTheme.spacingL),
         decoration: const BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
@@ -357,14 +389,16 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
           children: [
             Center(
               child: Container(
-                width: 40, 
-                height: 4, 
-                decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2)),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                    color: Colors.grey[300],
+                    borderRadius: BorderRadius.circular(2)),
               ),
             ),
             const SizedBox(height: 24),
             const Text(
-              '确认保存记录', 
+              '确认保存记录',
               style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
               textAlign: TextAlign.center,
             ),
@@ -375,10 +409,11 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
             const SizedBox(height: 16),
             _buildConfirmationRow('对象', '$name ($_relationship)'),
             const SizedBox(height: 16),
-            _buildConfirmationRow('日期', DateFormat('yyyy-MM-dd').format(_selectedDate)),
-            if (_noteController.text.isNotEmpty) ...[
+            _buildConfirmationRow(
+                '日期', DateFormat('yyyy-MM-dd').format(_selectedDate)),
+            if (savedNote != null) ...[
               const SizedBox(height: 16),
-              _buildConfirmationRow('备注', _noteController.text),
+              _buildConfirmationRow('备注', savedNote),
             ],
             const SizedBox(height: 32),
             Row(
@@ -389,9 +424,13 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
                     style: TextButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       backgroundColor: Colors.grey[100],
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16)),
                     ),
-                    child: const Text('返回修改', style: TextStyle(fontWeight: FontWeight.w700, color: Colors.black54)),
+                    child: const Text('返回修改',
+                        style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: Colors.black54)),
                   ),
                 ),
                 const SizedBox(width: 16),
@@ -400,15 +439,22 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
                   child: ElevatedButton(
                     onPressed: () {
                       Navigator.pop(context);
-                      _executeSave(name, amountDouble);
+                      _executeSave(name, amountDouble, savedNote);
                     },
                     style: ElevatedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 16),
-                      backgroundColor: _isReceived ? AppTheme.primaryColor : AppTheme.accentColor,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      backgroundColor: _isReceived
+                          ? AppTheme.primaryColor
+                          : AppTheme.accentColor,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16)),
                       elevation: 0,
                     ),
-                    child: const Text('确认写入', style: TextStyle(fontWeight: FontWeight.w900, color: Colors.white, fontSize: 16)),
+                    child: const Text('确认写入',
+                        style: TextStyle(
+                            fontWeight: FontWeight.w900,
+                            color: Colors.white,
+                            fontSize: 16)),
                   ),
                 ),
               ],
@@ -420,8 +466,10 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
     );
   }
 
-  Future<void> _executeSave(String name, double amount) async {
+  Future<void> _executeSave(
+      String name, double amount, String? savedNote) async {
     setState(() => _isSaving = true);
+
     try {
       // 编辑模式：更新现有记录
       if (widget.editingGift != null) {
@@ -433,14 +481,15 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
           eventType: _eventType,
           eventBookId: _eventBookId,
           date: _selectedDate,
-          note: _noteController.text.trim().isEmpty ? null : _noteController.text.trim(),
+          note: savedNote,
         );
 
         await _db.updateGift(giftToUpdate);
 
         // 如果姓名或关系变了，更新 Guest
         if (widget.editingGuest != null) {
-          if (widget.editingGuest!.name != name || widget.editingGuest!.relationship != _relationship) {
+          if (widget.editingGuest!.name != name ||
+              widget.editingGuest!.relationship != _relationship) {
             final guestToUpdate = Guest(
               id: widget.editingGuest!.id,
               name: name,
@@ -460,26 +509,26 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
           name: name,
           relationship: _relationship,
         );
-        
+
         final gift = Gift(
-          guestId: 0, 
+          guestId: 0,
           amount: amount,
           isReceived: _isReceived,
           eventType: _eventType,
           eventBookId: _eventBookId,
           date: _selectedDate,
-          note: _noteController.text.trim().isEmpty ? null : _noteController.text.trim(),
+          note: savedNote,
           relatedRecordId: widget.relatedGiftId,
           isReturned: widget.relatedGiftId != null, // 如果有关联ID，则标记为已还
         );
 
         await _db.saveGiftWithGuest(gift, guest);
-        
+
         // 如果有预设关联记录，也标记原记录为已还
         if (widget.relatedGiftId != null) {
           await _db.updateReturnStatus(widget.relatedGiftId!, isReturned: true);
         }
-        
+
         // 如果没有预设关联，且是送礼记录，检查是否有匹配的未还收礼记录
         if (widget.relatedGiftId == null && !_isReceived) {
           await _checkAndSuggestLink(name, amount);
@@ -487,7 +536,7 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
           // 如果是收礼记录，检查是否有匹配的待收送礼记录
           await _checkAndSuggestLinkForReceived(name, amount);
         }
-        
+
         if (mounted) {
           CustomToast.show(context, '保存成功');
           Navigator.pop(context, true);
@@ -518,7 +567,8 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
   }
 
   /// 检查是否有匹配的待收送礼记录（用于收礼记录）
-  Future<void> _checkAndSuggestLinkForReceived(String guestName, double amount) async {
+  Future<void> _checkAndSuggestLinkForReceived(
+      String guestName, double amount) async {
     await _checkAndSuggestLinkGeneric(
       guestName: guestName,
       amount: amount,
@@ -551,11 +601,12 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
       final guestId = matchedGuest.first.id;
 
       // 找到该联系人的待处理记录，且事件类型相同
-      final matchedGifts = pendingGifts.where((g) =>
-        g.guestId == guestId &&
-        g.eventType == _eventType &&
-        g.relatedRecordId == null
-      ).toList();
+      final matchedGifts = pendingGifts
+          .where((g) =>
+              g.guestId == guestId &&
+              g.eventType == _eventType &&
+              g.relatedRecordId == null)
+          .toList();
 
       if (matchedGifts.isEmpty || !mounted) return;
 
@@ -565,7 +616,8 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
       final shouldLink = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           title: Row(
             children: [
               Icon(Icons.link_rounded, color: accentColor),
@@ -599,7 +651,10 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
                           ),
                           Text(
                             DateFormat('yyyy-MM-dd').format(matchedGift.date),
-                            style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: AppTheme.textSecondary,
+                            ),
                           ),
                         ],
                       ),
@@ -621,7 +676,8 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: accentColor,
                 foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10)),
               ),
               child: const Text('关联'),
             ),
@@ -639,14 +695,16 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final accentColor = _isReceived ? AppTheme.primaryColor : AppTheme.accentColor;
+    final accentColor =
+        _isReceived ? AppTheme.primaryColor : AppTheme.accentColor;
     final isKeyboardVisible = MediaQuery.of(context).viewInsets.bottom > 0;
-    
+
     return Scaffold(
       backgroundColor: AppTheme.backgroundColor,
       extendBodyBehindAppBar: true,
       appBar: AppBar(
-        title: const Text('新增礼金', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 20)),
+        title: const Text('新增礼金',
+            style: TextStyle(fontWeight: FontWeight.w900, fontSize: 20)),
         backgroundColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
@@ -674,7 +732,8 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
               Expanded(
                 child: SingleChildScrollView(
                   physics: const BouncingScrollPhysics(),
-                  padding: const EdgeInsets.fromLTRB(AppTheme.spacingL, 100, AppTheme.spacingL, AppTheme.spacingL),
+                  padding: const EdgeInsets.fromLTRB(AppTheme.spacingL, 100,
+                      AppTheme.spacingL, AppTheme.spacingL),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -690,7 +749,8 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
                         child: _buildAmountCard(accentColor),
                       ),
                       const SizedBox(height: 24),
-                      _buildNeoSection('记录类型', _buildPremiumTypeSelector(accentColor)),
+                      _buildNeoSection(
+                          '记录类型', _buildPremiumTypeSelector(accentColor)),
                       const SizedBox(height: 24),
                       _buildNeoSection('基本信息', _buildInfoSection()),
                       const SizedBox(height: 24),
@@ -704,13 +764,13 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
               ),
               // 键盘显示时隐藏保存按?
               if (!isKeyboardVisible) _buildStickySaveBar(accentColor),
-              
+
               // 当请求显示且系统键盘未弹出时，显示自定义数字键盘
               AnimatedSize(
                 duration: const Duration(milliseconds: 300),
                 curve: Curves.easeInOutCubic,
                 alignment: Alignment.topCenter,
-                child: (_showNumpad && !isKeyboardVisible) 
+                child: (_showNumpad && !isKeyboardVisible)
                     ? _buildCustomNumPad()
                     : const SizedBox(width: double.infinity, height: 0),
               ),
@@ -778,7 +838,7 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
       child: Column(
         children: [
           const SizedBox(height: 24),
-          Text(
+          const Text(
             '礼金金额',
             style: TextStyle(
               fontSize: 14,
@@ -804,7 +864,7 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
                 const SizedBox(width: 8),
                 Text(
                   _amount,
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontSize: 56,
                     fontWeight: FontWeight.w900,
                     color: AppTheme.textPrimary,
@@ -829,7 +889,7 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
                 final isSelected = _amount == amountStr;
                 return GestureDetector(
                   onTap: () {
-                     // 阻止冒泡到父GestureDetector (如果有的话，但这里我们已经在内部了)
+                    // 阻止冒泡到父GestureDetector (如果有的话，但这里我们已经在内部了)
                     setState(() {
                       _amount = amountStr;
                     });
@@ -837,9 +897,12 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 200),
                     margin: const EdgeInsets.only(right: 12),
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     decoration: BoxDecoration(
-                      color: isSelected ? accentColor : accentColor.withValues(alpha: 0.05),
+                      color: isSelected
+                          ? accentColor
+                          : accentColor.withValues(alpha: 0.05),
                       borderRadius: BorderRadius.circular(20),
                       boxShadow: isSelected
                           ? [
@@ -856,7 +919,9 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w700,
-                        color: isSelected ? Colors.white : accentColor.withValues(alpha: 0.8),
+                        color: isSelected
+                            ? Colors.white
+                            : accentColor.withValues(alpha: 0.8),
                       ),
                     ),
                   ),
@@ -905,19 +970,23 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
           decoration: BoxDecoration(
             color: isSelected ? color : Colors.transparent,
             borderRadius: BorderRadius.circular(15),
-            boxShadow: isSelected ? [
-              BoxShadow(
-                color: color.withValues(alpha: 0.3),
-                blurRadius: 12,
-                offset: const Offset(0, 4),
-              )
-            ] : null,
+            boxShadow: isSelected
+                ? [
+                    BoxShadow(
+                      color: color.withValues(alpha: 0.3),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                    )
+                  ]
+                : null,
           ),
           child: Center(
             child: Text(
               label,
               style: TextStyle(
-                color: isSelected ? Theme.of(context).colorScheme.onPrimary : AppTheme.textSecondary,
+                color: isSelected
+                    ? Theme.of(context).colorScheme.onPrimary
+                    : AppTheme.textSecondary,
                 fontWeight: FontWeight.w800,
                 fontSize: 15,
               ),
@@ -1004,19 +1073,24 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
           foregroundColor: Colors.white,
           elevation: 8,
           shadowColor: accentColor.withValues(alpha: 0.5),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         ),
-        child: _isSaving 
-          ? const CircularProgressIndicator(color: Colors.white)
-          : const Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.check_circle_rounded),
-                SizedBox(width: 12),
-                Text('保存记录', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, letterSpacing: 1.2)),
-              ],
-            ),
-        ),
+        child: _isSaving
+            ? const CircularProgressIndicator(color: Colors.white)
+            : const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.check_circle_rounded),
+                  SizedBox(width: 12),
+                  Text('保存记录',
+                      style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 1.2)),
+                ],
+              ),
+      ),
     );
   }
 
@@ -1044,10 +1118,12 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
             fullWidth: true,
           ),
           const SizedBox(height: 16),
-          _buildNeoInput(
+          RecordNoteField(
             controller: _noteController,
-            hint: '添加备注...',
-            icon: Icons.edit_note_rounded,
+            onTap: () {
+              FocusScope.of(context).unfocus();
+              setState(() => _showNumpad = false);
+            },
           ),
         ],
       ),
@@ -1073,7 +1149,9 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
       },
       decoration: InputDecoration(
         hintText: hint,
-        hintStyle: TextStyle(color: AppTheme.textSecondary.withValues(alpha: 0.5), fontWeight: FontWeight.w500),
+        hintStyle: TextStyle(
+            color: AppTheme.textSecondary.withValues(alpha: 0.5),
+            fontWeight: FontWeight.w500),
         prefixIcon: Icon(icon, color: AppTheme.primaryColor),
         border: InputBorder.none,
         contentPadding: const EdgeInsets.symmetric(vertical: 16),
@@ -1120,12 +1198,21 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(label, style: TextStyle(fontSize: 10, color: AppTheme.textSecondary.withValues(alpha: 0.6), fontWeight: FontWeight.w800)),
-                  Text(value, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: AppTheme.textPrimary)),
+                  Text(label,
+                      style: TextStyle(
+                          fontSize: 10,
+                          color: AppTheme.textSecondary.withValues(alpha: 0.6),
+                          fontWeight: FontWeight.w800)),
+                  Text(value,
+                      style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                          color: AppTheme.textPrimary)),
                 ],
               ),
             ),
-            Icon(Icons.keyboard_arrow_down_rounded, size: 20, color: AppTheme.textSecondary.withValues(alpha: 0.4)),
+            Icon(Icons.keyboard_arrow_down_rounded,
+                size: 20, color: AppTheme.textSecondary.withValues(alpha: 0.4)),
           ],
         ),
       ),
@@ -1141,20 +1228,28 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
   }) async {
     // 显示前清除焦点 - 使用 FocusManager 直接操作
     FocusManager.instance.primaryFocus?.unfocus();
-    
+
     await showModalBottomSheet(
       context: context,
       backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(32))),
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(32))),
       builder: (context) {
         return Container(
           padding: const EdgeInsets.all(24),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2))),
+              Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                      color: Colors.grey[300],
+                      borderRadius: BorderRadius.circular(2))),
               const SizedBox(height: 24),
-              Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+              Text(title,
+                  style: const TextStyle(
+                      fontSize: 18, fontWeight: FontWeight.w900)),
               const SizedBox(height: 16),
               Wrap(
                 spacing: 12,
@@ -1167,18 +1262,29 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
                       Navigator.pop(context);
                     },
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 12),
                       decoration: BoxDecoration(
-                        color: isSelected ? AppTheme.primaryColor : AppTheme.backgroundColor,
+                        color: isSelected
+                            ? AppTheme.primaryColor
+                            : AppTheme.backgroundColor,
                         borderRadius: BorderRadius.circular(16),
-                        boxShadow: isSelected ? [
-                          BoxShadow(color: AppTheme.primaryColor.withValues(alpha: 0.3), blurRadius: 8, offset: const Offset(0, 4))
-                        ] : null,
+                        boxShadow: isSelected
+                            ? [
+                                BoxShadow(
+                                    color: AppTheme.primaryColor
+                                        .withValues(alpha: 0.3),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 4))
+                              ]
+                            : null,
                       ),
                       child: Text(
                         item,
                         style: TextStyle(
-                          color: isSelected ? Theme.of(context).colorScheme.onPrimary : AppTheme.textPrimary,
+                          color: isSelected
+                              ? Theme.of(context).colorScheme.onPrimary
+                              : AppTheme.textPrimary,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
@@ -1192,7 +1298,7 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
         );
       },
     );
-    
+
     // 弹窗关闭后，再次确保取消焦点，防止键盘弹出
     FocusManager.instance.primaryFocus?.unfocus();
   }
