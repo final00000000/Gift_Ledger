@@ -4,6 +4,7 @@ import 'package:flutter/scheduler.dart';
 
 import '../../models/update_target.dart';
 import 'update_controller.dart';
+import 'update_installer.dart';
 import 'update_keys.dart';
 
 typedef UpdateMessageHandler = void Function(String message);
@@ -74,7 +75,12 @@ String? buildInstallFeedbackMessage(
   UpdateState state, {
   String fallbackErrorMessage = '启动更新失败',
 }) {
-  if (state.error != null) {
+  final error = state.error;
+  if (error is UpdateInstallerException) {
+    return error.message;
+  }
+
+  if (error != null) {
     return fallbackErrorMessage;
   }
 

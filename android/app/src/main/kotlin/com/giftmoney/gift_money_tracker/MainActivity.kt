@@ -2,6 +2,8 @@ package com.giftmoney.gift_ledger
 
 import android.app.Activity
 import android.content.Intent
+import android.content.pm.PackageManager
+import androidx.core.content.FileProvider
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.plugin.common.MethodChannel
@@ -11,6 +13,7 @@ import java.io.IOException
 
 class MainActivity: FlutterActivity() {
     private val fileSaverChannelName = "com.giftmoney.gift_ledger/file_saver"
+    private val appInstallerChannelName = "com.giftmoney.gift_ledger/app_installer"
     private val requestCodeCreateDocument = 43411
 
     private var pendingResult: MethodChannel.Result? = null
@@ -26,6 +29,78 @@ class MainActivity: FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, appInstallerChannelName)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "installApk" -> handleInstallApk(call.arguments, result)
+                    else -> result.notImplemented()
+                }
+            }
+    }
+
+    private fun handleInstallApk(arguments: Any?, result: MethodChannel.Result) {
+        val args = arguments as? Map<*, *> ?: run {
+            result.error("BAD_ARGS", "Arguments must be a map", null)
+            return
+        }
+
+        val filePath = args["filePath"] as? String
+        if (filePath.isNullOrBlank()) {
+            result.error("BAD_ARGS", "filePath required", null)
+            return
+        }
+
+        val apkFile = File(filePath)
+        if (!apkFile.exists()) {
+            result.error("FILE_NOT_FOUND", "安装包不存在", null)
+            return
+        }
+
+        val apkUri = try {
+            FileProvider.getUriForFile(
+                this,
+                "${applicationContext.packageName}.fileprovider",
+                apkFile,
+            )
+        } catch (e: Exception) {
+            result.error("URI_FAILED", e.message ?: "安装包 URI 创建失败", null)
+            return
+        }
+
+        val installIntent = Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
+            data = apkUri
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            putExtra(Intent.EXTRA_RETURN_RESULT, false)
+        }
+
+        val resolvedActivities = packageManager.queryIntentActivities(
+            installIntent,
+            PackageManager.MATCH_DEFAULT_ONLY,
+        )
+        if (resolvedActivities.isEmpty()) {
+            result.error("NO_INSTALLER", "当前设备未找到可用的系统安装器", null)
+            return
+        }
+
+        val preferredPackage = resolvedActivities
+            .mapNotNull { it.activityInfo?.packageName }
+            .firstOrNull {
+                it.contains("packageinstaller") ||
+                    it.contains("permissioncontroller") ||
+                    it.contains("appmarket")
+            }
+        if (!preferredPackage.isNullOrBlank()) {
+            installIntent.setPackage(preferredPackage)
+        }
+
+        try {
+            startActivity(installIntent)
+            result.success(true)
+        } catch (e: Exception) {
+            result.error("INSTALL_INTENT_FAILED", e.message ?: "系统安装器启动失败", null)
+        }
     }
 
     private fun handleSaveAs(arguments: Any?, result: MethodChannel.Result) {
