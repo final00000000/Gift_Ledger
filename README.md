@@ -8,6 +8,7 @@
 ![平台](https://img.shields.io/badge/平台-Android%20%7C%20Windows%20%7C%20Web%20%7C%20iOS-lightgrey)
 
 一款简洁优雅的礼金收支管理应用，帮助你轻松记录和追踪人情往来。
+Android / Windows 版本现已支持 **App 内置更新检查**。
 
 [English](./README_EN.md) | 简体中文
 
@@ -31,10 +32,10 @@
 
 | 平台 | 下载链接 | 说明 |
 |------|----------|------|
-| **Android** | [📦 APK 下载](https://github.com/final00000000/Gift_Ledger/releases/latest) | 直接安装 |
-| **Windows** | [📦 ZIP 下载](https://github.com/final00000000/Gift_Ledger/releases/latest) | 解压后运行 `Gift_Ledger.exe` |
+| **Android** | [📦 APK 下载](https://github.com/final00000000/Gift_Ledger/releases/latest) | 支持 App 内手动检查与启动后自动检查更新 |
+| **Windows** | [📦 EXE 安装器下载](https://github.com/final00000000/Gift_Ledger/releases/latest) | 推荐使用安装器升级，后续版本支持 App 内拉起安装器 |
 | **Web** | [📦 ZIP 下载](https://github.com/final00000000/Gift_Ledger/releases/latest) | 部署到静态托管 |
-| **iOS** | 暂无预编译版本 | 需自行构建（见 [docs/BUILD.md](./docs/BUILD.md)） |
+| **iOS** | 暂无预编译版本 | 需自行构建（见 [BUILD.md](./BUILD.md)） |
 
 ---
 
@@ -45,6 +46,14 @@
 - **人情往来**：联系人管理、还礼提醒
 - **活动簿**：按活动整理与批量录入
 - **数据备份**：Excel/JSON 导出与导入
+- **应用更新**：Android / Windows 支持启动自动检查、设置页手动检查、首页轻提示与版本忽略
+
+### 更新通道说明
+
+- 默认通道为 **stable**
+- 可在设置页手动开启 **beta**
+- beta 用户优先接收 beta 版本；若没有更高 beta，则回退检测 stable
+- 勾选“这个版本不再提示”后，该版本不再弹窗，但仍保留红点与轻提示
 
 详细说明见：[docs/FEATURES.md](./docs/FEATURES.md)
 
@@ -97,7 +106,7 @@
 
 ## 🔨 构建指南
 
-构建与发布请参考：[docs/BUILD.md](./docs/BUILD.md)
+构建与发布请参考：[BUILD.md](./BUILD.md)
 
 ---
 
