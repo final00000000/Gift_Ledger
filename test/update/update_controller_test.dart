@@ -285,6 +285,22 @@ void main() {
       expect(controller.state.showDialog, isFalse);
       expect(controller.state.showBanner, isFalse);
     });
+    test('启动弹窗已展示后，下载流程不会再次把 dialog 打开', () async {
+      final installer = FakeUpdateInstaller(
+        progressSteps: const <DownloadProgress>[
+          DownloadProgress(receivedBytes: 32, totalBytes: 128),
+        ],
+      );
+      final controller = buildController(installer: installer);
+
+      await controller.checkForUpdates(source: UpdateCheckSource.startup);
+      await controller.markCurrentTargetPresented();
+      await controller.installCurrentTarget();
+
+      expect(controller.state.status, UpdateStateStatus.installing);
+      expect(controller.state.showDialog, isFalse);
+      expect(controller.state.showRedDot, isTrue);
+    });
 
     test('手动检查后即使记录已展示，下次启动同版本仍会继续弹窗，直到勾选不再提示', () async {
       final manualController = buildController();
@@ -555,17 +571,12 @@ void main() {
       expect(installer.reopenCallCount, 0);
     });
 
-    test('handleAppResumed 在首次返回前台且版本未更新时会自动重开本地安装包一次', () async {
+    test('handleAppResumed 在安装取消后返回前台时不会再次拉起安装器', () async {
       final installer = FakeUpdateInstaller(
         result: const InstallResult(
           didOpen: true,
           savePath: 'C:/temp/GiftLedgerSetup.exe',
           message: 'started',
-        ),
-        reopenResult: const InstallResult(
-          didOpen: true,
-          savePath: 'C:/temp/GiftLedgerSetup.exe',
-          message: 'reopened',
         ),
       );
       final controller = buildController(
@@ -588,11 +599,17 @@ void main() {
       await controller.installCurrentTarget();
       await controller.handleAppResumed();
 
-      expect(installer.reopenCallCount, 1);
-      expect(installer.lastReopenedPath, 'C:/temp/GiftLedgerSetup.exe');
-      expect(controller.state.status, UpdateStateStatus.installing);
-      expect(controller.state.installResult?.message, 'reopened');
-      expect(controller.state.error, isNull);
+      expect(installer.reopenCallCount, 0);
+      expect(controller.state.status, UpdateStateStatus.available);
+      expect(controller.state.installResult?.message, 'started');
+      expect(
+        controller.state.error,
+        isA<UpdateInstallerException>().having(
+          (error) => error.message,
+          'message',
+          '安装已取消或未完成，可重新点击更新。',
+        ),
+      );
     });
 
     test('并发检查时，旧请求晚返回不会覆盖较新的结果', () async {

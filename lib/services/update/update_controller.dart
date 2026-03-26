@@ -86,7 +86,6 @@ class UpdateController extends ChangeNotifier {
   bool _isInstallFlowStarting = false;
   bool _awaitingInstallPermissionGrant = false;
   bool _awaitingInstallCompletion = false;
-  bool _didAutoResumePendingInstall = false;
 
   UpdateState get state => _state;
   UpdateChannel get selectedChannel => _selectedChannel;
@@ -312,49 +311,13 @@ class UpdateController extends ChangeNotifier {
       // 读取当前版本失败时保持安装恢复兜底，不阻断后续逻辑。
     }
 
-    if (_didAutoResumePendingInstall ||
-        lastInstallResult == null ||
-        !_isLocalInstallPath(lastInstallResult.savePath)) {
-      _clearPendingInstallTracking();
-      _state = _buildAvailableState(
-        source: source,
-        target: target,
-        installResult: lastInstallResult,
-      );
-      notifyListeners();
-      return;
-    }
-
-    _didAutoResumePendingInstall = true;
+    _clearPendingInstallTracking();
     _state = _buildAvailableState(
       source: source,
       target: target,
-      status: UpdateStateStatus.installing,
       installResult: lastInstallResult,
+      error: const UpdateInstallerException('安装已取消或未完成，可重新点击更新。'),
     );
-    notifyListeners();
-
-    try {
-      final reopenedResult = await _installer.reopenDownloadedPackage(
-        lastInstallResult.savePath,
-      );
-      _state = _buildAvailableState(
-        source: source,
-        target: target,
-        status: UpdateStateStatus.installing,
-        installResult: reopenedResult,
-      );
-    } catch (error, stackTrace) {
-      _clearPendingInstallTracking();
-      _state = _buildAvailableState(
-        source: source,
-        target: target,
-        installResult: lastInstallResult,
-        error: error,
-        stackTrace: stackTrace,
-      );
-    }
-
     notifyListeners();
   }
 
@@ -428,7 +391,6 @@ class UpdateController extends ChangeNotifier {
       );
 
       _awaitingInstallCompletion = installResult.didOpen;
-      _didAutoResumePendingInstall = false;
       _state = _buildAvailableState(
         source: source,
         target: target,
@@ -489,7 +451,6 @@ class UpdateController extends ChangeNotifier {
   void _clearPendingInstallTracking() {
     _awaitingInstallPermissionGrant = false;
     _awaitingInstallCompletion = false;
-    _didAutoResumePendingInstall = false;
   }
 
   bool _isBuildInfoAtLeastTarget(AppBuildInfo buildInfo, UpdateTarget target) {
@@ -515,14 +476,37 @@ class UpdateController extends ChangeNotifier {
     return currentBuildNumber >= targetBuildNumber;
   }
 
-  bool _isLocalInstallPath(String path) {
-    final normalizedPath = path.trim().toLowerCase();
-    if (normalizedPath.isEmpty) {
+  UpdatePromptDecision _resolveAvailableDecision({
+    required UpdateCheckSource source,
+    required UpdateTarget target,
+    UpdatePromptDecision? overrideDecision,
+  }) {
+    final resolvedDecision = overrideDecision ??
+        _promptPolicy.decide(
+          source: source,
+          target: target,
+          ignoredTargetKeys: _ignoredTargetKeys,
+          promptedTargetKeys: _promptedTargetKeys,
+        );
+
+    if (!_shouldKeepCurrentDialogDismissed(target)) {
+      return resolvedDecision;
+    }
+
+    return UpdatePromptDecision(
+      showDialog: false,
+      showRedDot: resolvedDecision.showRedDot,
+      showBanner: resolvedDecision.showBanner,
+    );
+  }
+
+  bool _shouldKeepCurrentDialogDismissed(UpdateTarget target) {
+    final currentTarget = _state.target;
+    if (currentTarget == null || _state.showDialog) {
       return false;
     }
 
-    return !normalizedPath.startsWith('http://') &&
-        !normalizedPath.startsWith('https://');
+    return buildUpdateTargetKey(currentTarget) == buildUpdateTargetKey(target);
   }
 
   UpdateState _buildAvailableState({
@@ -535,13 +519,11 @@ class UpdateController extends ChangeNotifier {
     Object? error,
     StackTrace? stackTrace,
   }) {
-    final resolvedDecision = decision ??
-        _promptPolicy.decide(
-          source: source,
-          target: target,
-          ignoredTargetKeys: _ignoredTargetKeys,
-          promptedTargetKeys: _promptedTargetKeys,
-        );
+    final resolvedDecision = _resolveAvailableDecision(
+      source: source,
+      target: target,
+      overrideDecision: decision,
+    );
 
     return UpdateState(
       status: status,
