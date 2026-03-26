@@ -12,7 +12,7 @@ on:
           - beta
         default: stable
       release_tag:
-        description: 可选，自定义 Release Tag（默认自动生成）
+        description: 可选，自定义 Release Tag（beta 发布必须填写，如 v1.3.1-beta.1）
         required: false
         type: string
       release_notes:
@@ -60,76 +60,15 @@ jobs:
           INPUT_CHANNEL: ${{ github.event.inputs.channel }}
           INPUT_RELEASE_TAG: ${{ github.event.inputs.release_tag }}
           REF_NAME: ${{ github.ref_name }}
-          GITHUB_RUN_NUMBER: ${{ github.run_number }}
         run: |
-          python - <<'PY'
-          import os
-          import pathlib
-          import re
-
-          text = pathlib.Path("pubspec.yaml").read_text(encoding="utf-8")
-          name_match = re.search(r"^name:\s*([^\s]+)", text, re.M)
-          version_match = re.search(r"^version:\s*([^\s]+)", text, re.M)
-          if not name_match or not version_match:
-              raise SystemExit("name/version not found in pubspec.yaml")
-
-          app_name = name_match.group(1).strip()
-          full_version = version_match.group(1).strip()
-          pubspec_semver, _, pubspec_build_number = full_version.partition("+")
-          event_name = os.environ.get("EVENT_NAME", "").strip()
-          input_channel = os.environ.get("INPUT_CHANNEL", "").strip().lower()
-          input_release_tag = os.environ.get("INPUT_RELEASE_TAG", "").strip()
-          ref_name = os.environ.get("REF_NAME", "").strip()
-          github_run_number = os.environ.get("GITHUB_RUN_NUMBER", "").strip()
-
-          semver_pattern = re.compile(r"^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$")
-          semver = pubspec_semver
-          release_tag = input_release_tag
-
-          if release_tag:
-              if not release_tag.startswith("v"):
-                  release_tag = f"v{release_tag}"
-              semver = release_tag[1:]
-              if not semver_pattern.fullmatch(semver):
-                  raise SystemExit(f"Invalid release tag: {release_tag}")
-          elif event_name == "push" and ref_name:
-              release_tag = ref_name if ref_name.startswith("v") else f"v{ref_name}"
-              semver = release_tag[1:]
-              if not semver_pattern.fullmatch(semver):
-                  raise SystemExit(f"Invalid git tag: {release_tag}")
-
-          if event_name == "push" and ref_name.startswith("v"):
-              channel = "beta" if "beta" in ref_name.lower() else "stable"
-          elif release_tag:
-              channel = "beta" if "beta" in release_tag.lower() else (input_channel or "stable")
-          else:
-              channel = input_channel or ("beta" if "beta" in semver.lower() else "stable")
-
-          if not release_tag:
-              release_tag = f"v{semver}"
-              if channel == "beta" and "beta" not in release_tag.lower():
-                  release_tag = f"{release_tag}-beta"
-
-          build_number = github_run_number or pubspec_build_number or "0"
-          if not build_number.isdigit():
-              raise SystemExit(f"Invalid build number: {build_number}")
-
-          asset_name = f"{app_name}-{channel}-android-v{semver}-build{build_number}.apk"
-
-          output_path = pathlib.Path(os.environ["GITHUB_OUTPUT"])
-          values = {
-              "app_name": app_name,
-              "semver": semver,
-              "build_number": build_number,
-              "channel": channel,
-              "release_tag": release_tag,
-              "asset_name": asset_name,
-          }
-          with output_path.open("a", encoding="utf-8") as stream:
-              for key, value in values.items():
-                  stream.write(f"{key}={value}\n")
-          PY
-
+          python tool/resolve_release_metadata.py \
+            --pubspec pubspec.yaml \
+            --event-name "${EVENT_NAME}" \
+            --input-channel "${INPUT_CHANNEL}" \
+            --input-release-tag "${INPUT_RELEASE_TAG}" \
+            --ref-name "${REF_NAME}" \
+            --platform android \
+            --github-output "${GITHUB_OUTPUT}"
       - name: Install dependencies
         run: flutter pub get
 
@@ -260,84 +199,15 @@ jobs:
           INPUT_CHANNEL: ${{ github.event.inputs.channel }}
           INPUT_RELEASE_TAG: ${{ github.event.inputs.release_tag }}
           REF_NAME: ${{ github.ref_name }}
-          GITHUB_RUN_NUMBER: ${{ github.run_number }}
         run: |
-          $text = Get-Content "pubspec.yaml" -Raw
-          $nameMatch = [regex]::Match($text, '^name:\s*([^\s]+)', 'Multiline')
-          $versionMatch = [regex]::Match($text, '^version:\s*([^\s]+)', 'Multiline')
-          if (-not $nameMatch.Success -or -not $versionMatch.Success) {
-            throw "name/version not found in pubspec.yaml"
-          }
-
-          $appName = $nameMatch.Groups[1].Value.Trim()
-          $fullVersion = $versionMatch.Groups[1].Value.Trim()
-          $parts = $fullVersion.Split('+', 2)
-          $pubspecSemver = $parts[0]
-          $pubspecBuildNumber = if ($parts.Length -gt 1 -and $parts[1]) { $parts[1] } else { '0' }
-          $semver = $pubspecSemver
-          $channel = $env:INPUT_CHANNEL.Trim().ToLower()
-          $refName = $env:REF_NAME.Trim()
-          $releaseTag = $env:INPUT_RELEASE_TAG.Trim()
-          $semverPattern = '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$'
-
-          if (-not [string]::IsNullOrWhiteSpace($releaseTag)) {
-            if (-not $releaseTag.StartsWith('v')) {
-              $releaseTag = "v$releaseTag"
-            }
-            $semver = $releaseTag.Substring(1)
-            if (-not ($semver -match $semverPattern)) {
-              throw "Invalid release tag: $releaseTag"
-            }
-          } elseif ($env:EVENT_NAME -eq 'push' -and -not [string]::IsNullOrWhiteSpace($refName)) {
-            $releaseTag = if ($refName.StartsWith('v')) { $refName } else { "v$refName" }
-            $semver = $releaseTag.Substring(1)
-            if (-not ($semver -match $semverPattern)) {
-              throw "Invalid git tag: $releaseTag"
-            }
-          }
-
-          if ($env:EVENT_NAME -eq 'push' -and $env:REF_NAME.StartsWith('v')) {
-            $channel = if ($env:REF_NAME.ToLower().Contains('beta')) { 'beta' } else { 'stable' }
-          } elseif (-not [string]::IsNullOrWhiteSpace($releaseTag)) {
-            if ($releaseTag.ToLower().Contains('beta')) {
-              $channel = 'beta'
-            } elseif ([string]::IsNullOrWhiteSpace($channel)) {
-              $channel = 'stable'
-            }
-          }
-          if ([string]::IsNullOrWhiteSpace($channel)) {
-            $channel = if ($semver.ToLower().Contains('beta')) { 'beta' } else { 'stable' }
-          }
-
-          if ([string]::IsNullOrWhiteSpace($releaseTag)) {
-            $releaseTag = "v$semver"
-            if ($channel -eq 'beta' -and -not $releaseTag.ToLower().Contains('beta')) {
-              $releaseTag = "$releaseTag-beta"
-            }
-          }
-
-          $buildNumber = if (-not [string]::IsNullOrWhiteSpace($env:GITHUB_RUN_NUMBER)) {
-            $env:GITHUB_RUN_NUMBER.Trim()
-          } elseif (-not [string]::IsNullOrWhiteSpace($pubspecBuildNumber)) {
-            $pubspecBuildNumber
-          } else {
-            '0'
-          }
-          if (-not ($buildNumber -match '^\d+$')) {
-            throw "Invalid build number: $buildNumber"
-          }
-
-          $assetBaseName = "$appName-$channel-windows-v$semver-build$buildNumber-setup"
-          $assetName = "$assetBaseName.exe"
-
-          Add-Content -Path $env:GITHUB_OUTPUT -Value "app_name=$appName"
-          Add-Content -Path $env:GITHUB_OUTPUT -Value "semver=$semver"
-          Add-Content -Path $env:GITHUB_OUTPUT -Value "build_number=$buildNumber"
-          Add-Content -Path $env:GITHUB_OUTPUT -Value "channel=$channel"
-          Add-Content -Path $env:GITHUB_OUTPUT -Value "release_tag=$releaseTag"
-          Add-Content -Path $env:GITHUB_OUTPUT -Value "asset_base_name=$assetBaseName"
-          Add-Content -Path $env:GITHUB_OUTPUT -Value "asset_name=$assetName"
-
+          python tool/resolve_release_metadata.py `
+            --pubspec pubspec.yaml `
+            --event-name "$env:EVENT_NAME" `
+            --input-channel "$env:INPUT_CHANNEL" `
+            --input-release-tag "$env:INPUT_RELEASE_TAG" `
+            --ref-name "$env:REF_NAME" `
+            --platform windows `
+            --github-output "$env:GITHUB_OUTPUT"
       - name: Install dependencies
         run: flutter pub get
 
