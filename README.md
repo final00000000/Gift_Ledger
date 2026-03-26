@@ -33,7 +33,7 @@ Android / Windows 版本现已支持 **App 内置更新检查**。
 | 平台 | 下载链接 | 说明 |
 |------|----------|------|
 | **Android** | [📦 APK 下载](https://github.com/final00000000/Gift_Ledger/releases/latest) | 支持 App 内手动检查与启动后自动检查更新 |
-| **Windows** | [📦 EXE 安装器下载](https://github.com/final00000000/Gift_Ledger/releases/latest) | 推荐使用安装器升级，后续版本支持 App 内拉起安装器 |
+| **Windows** | [📦 EXE 安装器下载](https://github.com/final00000000/Gift_Ledger/releases/latest) | 推荐使用安装器升级，支持 App 内拉起安装流程 |
 | **Web** | [📦 ZIP 下载](https://github.com/final00000000/Gift_Ledger/releases/latest) | 部署到静态托管 |
 | **iOS** | 暂无预编译版本 | 需自行构建（见 [BUILD.md](./BUILD.md)） |
 
@@ -46,7 +46,7 @@ Android / Windows 版本现已支持 **App 内置更新检查**。
 - **人情往来**：联系人管理、还礼提醒
 - **活动簿**：按活动整理与批量录入
 - **数据备份**：Excel/JSON 导出与导入
-- **应用更新**：Android / Windows 支持启动自动检查、设置页手动检查、首页轻提示与版本忽略
+- **应用更新**：Android / Windows 支持启动自动检查、设置页手动检查、版本忽略与红点提醒
 
 ### 更新通道说明
 
@@ -92,13 +92,16 @@ Android / Windows 版本现已支持 **App 内置更新检查**。
 
 ## 📋 更新日志
 
+**v1.3.2 (2026-03-26)**
+- ✨ 列表卡片展示备注摘要与状态标记，补齐自定义内容外显
+- ✨ 添加记录页支持多行备注、字数限制与更稳定的备注保存
+- ✨ 设置页 / 关于页整合更新入口，支持红点提示与版本忽略
+- 🐛 修复取消安装后二次拉起、Windows 安装器构建失败等更新链路问题
+- 📦 统一 Android / Windows 发布产物命名、版本规则与更新清单生成
+
 **v1.2.8 (2026-02-28)**
 - 设置页顶部添加 GitHub 跳转按钮
 - 构建工具升级（AGP 8.9.1 / Gradle 8.11.1）
-
-**v1.2.7 (2026-02-06)**
-- 配置预加载与安全解锁体验优化
-- Web 存储缓存优化
 
 👉 [查看完整更新日志](./CHANGELOG.md)
 

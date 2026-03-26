@@ -102,10 +102,10 @@ flutter build windows --release
 # 脚本位置：windows/installer/GiftLedger.iss
 # 需要在 Windows 环境安装 Inno Setup 6
 iscc ^
-  /DAppVersion=1.2.8 ^
-  /DAppBuild=8 ^
+  /DAppVersion=1.3.2 ^
+  /DAppBuild=1030299 ^
   /DAppChannel=stable ^
-  /DOutputBaseName=gift_ledger-stable-windows-v1.2.8-build8-setup ^
+  /DOutputBaseName=gift_ledger-stable-windows-v1.3.2-build1030299-setup ^
   windows/installer/GiftLedger.iss
 ```
 
