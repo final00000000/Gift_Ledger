@@ -13,18 +13,40 @@ typedef UpdateManifestFetcher = Future<Object?> Function(
 );
 
 class UpdateRepository {
-  // 当前分支更新闭环测试使用独立 manifest，避免污染默认分支与 CDN 旧缓存。
-  static const String updateTestingRef = 'beat/update-flow';
-  static const String _updateTestingRefEncoded = 'beat%2Fupdate-flow';
-  static const String _updateManifestPath =
+  // Release 包默认走正式 manifest；debug 包默认走测试 manifest，
+  // 便于当前分支做闭环验证且不污染正式更新源。
+  static const bool useTestingManifest = bool.fromEnvironment(
+    'USE_TESTING_UPDATE_SOURCE',
+    defaultValue: kDebugMode,
+  );
+  static const String productionManifestRef = String.fromEnvironment(
+    'UPDATE_MANIFEST_REF',
+    defaultValue: 'main',
+  );
+  static const String testingManifestRef = String.fromEnvironment(
+    'UPDATE_TESTING_REF',
+    defaultValue: 'beat/update-flow',
+  );
+  static const String productionManifestPath = 'releases/update-manifest.json';
+  static const String testingManifestPath =
       'releases/update-manifest.testing.json';
 
-  static const String githubContentsApiUrl =
-      'https://api.github.com/repos/final00000000/Gift_Ledger/contents/$_updateManifestPath?ref=$_updateTestingRefEncoded';
-  static const String jsDelivrManifestUrl =
-      'https://cdn.jsdelivr.net/gh/final00000000/Gift_Ledger@$_updateTestingRefEncoded/$_updateManifestPath';
-  static const String rawManifestUrl =
-      'https://raw.githubusercontent.com/final00000000/Gift_Ledger/$updateTestingRef/$_updateManifestPath';
+  static String get activeManifestRef =>
+      useTestingManifest ? testingManifestRef : productionManifestRef;
+  static String get activeManifestPath =>
+      useTestingManifest ? testingManifestPath : productionManifestPath;
+  static String get _activeManifestRefEncoded =>
+      Uri.encodeComponent(activeManifestRef);
+
+  static String get githubContentsApiUrl =>
+      'https://api.github.com/repos/final00000000/Gift_Ledger/contents/'
+      '$activeManifestPath?ref=$_activeManifestRefEncoded';
+  static String get jsDelivrManifestUrl =>
+      'https://cdn.jsdelivr.net/gh/final00000000/Gift_Ledger@'
+      '$_activeManifestRefEncoded/$activeManifestPath';
+  static String get rawManifestUrl =>
+      'https://raw.githubusercontent.com/final00000000/Gift_Ledger/'
+      '$activeManifestRef/$activeManifestPath';
   static const String githubReleasesApiUrl =
       'https://api.github.com/repos/final00000000/Gift_Ledger/releases?per_page=20';
   static const String githubLatestReleasePageUrl =
@@ -32,11 +54,20 @@ class UpdateRepository {
   static const String githubExpandedAssetsUrlPrefix =
       'https://github.com/final00000000/Gift_Ledger/releases/expanded_assets/';
 
-  static const List<String> manifestUrls = <String>[
-    githubContentsApiUrl,
-    jsDelivrManifestUrl,
-    rawManifestUrl,
-  ];
+  static List<String> get manifestUrls => <String>[
+        githubContentsApiUrl,
+        rawManifestUrl,
+        jsDelivrManifestUrl,
+      ];
+
+  static final RegExp _versionPattern = RegExp(
+    r'v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)',
+    caseSensitive: false,
+  );
+  static final RegExp _buildNumberPattern = RegExp(
+    r'build[_-]?(\d+)',
+    caseSensitive: false,
+  );
 
   UpdateRepository({
     Dio? dio,
@@ -195,14 +226,17 @@ class UpdateRepository {
         .map((asset) => Map<String, dynamic>.from(asset))
         .toList();
 
-    final apkAsset = _selectAndroidApkAsset(normalizedAssets);
-    if (apkAsset == null) {
+    final tagName = (release['tag_name'] as String?)?.trim() ?? '';
+    final version = _extractVersion(tagName);
+    if (version == null || version.isEmpty) {
       return null;
     }
 
-    final tagName = (release['tag_name'] as String?)?.trim() ?? '';
-    final version = tagName.startsWith('v') ? tagName.substring(1) : tagName;
-    if (version.isEmpty) {
+    final apkAsset = _selectAndroidApkAsset(
+      normalizedAssets,
+      expectedVersion: version,
+    );
+    if (apkAsset == null) {
       return null;
     }
 
@@ -215,7 +249,7 @@ class UpdateRepository {
 
     return {
       'version': version,
-      'buildNumber': 0,
+      'buildNumber': _extractBuildNumber(apkAsset),
       'downloadUrl': downloadUrl,
       'sha256': sha256,
       'packageType': 'apk',
@@ -245,25 +279,29 @@ class UpdateRepository {
       };
     }).toList();
 
-    final apkAsset = _selectAndroidApkAsset(assets);
+    final version = _extractVersion(tag);
+    if (version == null || version.isEmpty) {
+      return null;
+    }
+
+    final apkAsset = _selectAndroidApkAsset(
+      assets,
+      expectedVersion: version,
+    );
     if (apkAsset == null) {
       return null;
     }
 
-    final version = tag.startsWith('v') ? tag.substring(1) : tag;
     final downloadUrl = (apkAsset['browser_download_url'] as String?)?.trim();
     final digest = (apkAsset['digest'] as String?)?.trim();
     final sha256 = _extractSha256(digest);
-    if (version.isEmpty ||
-        downloadUrl == null ||
-        downloadUrl.isEmpty ||
-        sha256 == null) {
+    if (downloadUrl == null || downloadUrl.isEmpty || sha256 == null) {
       return null;
     }
 
     return {
       'version': version,
-      'buildNumber': 0,
+      'buildNumber': _extractBuildNumber(apkAsset),
       'downloadUrl': downloadUrl,
       'sha256': sha256,
       'packageType': 'apk',
@@ -287,9 +325,10 @@ class UpdateRepository {
   }
 
   Map<String, dynamic>? _selectAndroidApkAsset(
-    List<Map<String, dynamic>> assets,
-  ) {
-    final apkAssets = <Map<String, dynamic>>[];
+    List<Map<String, dynamic>> assets, {
+    String? expectedVersion,
+  }) {
+    var apkAssets = <Map<String, dynamic>>[];
     for (final asset in assets) {
       final name = (asset['name'] as String?)?.toLowerCase() ?? '';
       final url =
@@ -304,21 +343,114 @@ class UpdateRepository {
       return null;
     }
 
-    final arm64Assets = apkAssets.where((asset) {
-      final name = (asset['name'] as String?)?.toLowerCase() ?? '';
-      return name.contains('arm64');
-    }).toList()
-      ..sort((left, right) {
-        final leftSize = _assetSizeOrMax(left);
-        final rightSize = _assetSizeOrMax(right);
-        return leftSize.compareTo(rightSize);
-      });
+    if (expectedVersion != null && expectedVersion.isNotEmpty) {
+      final versionMatchedAssets = apkAssets.where((asset) {
+        return _assetContainsVersion(asset, expectedVersion);
+      }).toList();
+      if (versionMatchedAssets.isNotEmpty) {
+        apkAssets = versionMatchedAssets;
+      }
 
-    if (arm64Assets.isNotEmpty) {
-      return arm64Assets.first;
+      final likelyGiftLedgerAssets = apkAssets.where((asset) {
+        final name = (asset['name'] as String?)?.toLowerCase() ?? '';
+        final url =
+            (asset['browser_download_url'] as String?)?.toLowerCase() ?? '';
+        return _isLikelyGiftLedgerReleaseAsset(
+          name: name,
+          url: url,
+          version: expectedVersion,
+        );
+      }).toList();
+      if (likelyGiftLedgerAssets.isNotEmpty) {
+        apkAssets = likelyGiftLedgerAssets;
+      }
     }
 
+    final assetsWithBuildNumber = apkAssets.where((asset) {
+      return _extractBuildNumber(asset) > 0;
+    }).toList();
+    if (assetsWithBuildNumber.isNotEmpty) {
+      apkAssets = assetsWithBuildNumber;
+    }
+
+    apkAssets.sort(_compareAndroidApkAssets);
     return apkAssets.first;
+  }
+
+  int _compareAndroidApkAssets(
+    Map<String, dynamic> left,
+    Map<String, dynamic> right,
+  ) {
+    final leftArm64 = _isArm64Asset(left);
+    final rightArm64 = _isArm64Asset(right);
+    if (leftArm64 != rightArm64) {
+      return leftArm64 ? -1 : 1;
+    }
+
+    final leftBuildNumber = _extractBuildNumber(left);
+    final rightBuildNumber = _extractBuildNumber(right);
+    if (leftBuildNumber != rightBuildNumber) {
+      return rightBuildNumber.compareTo(leftBuildNumber);
+    }
+
+    final leftSize = _assetSizeOrMax(left);
+    final rightSize = _assetSizeOrMax(right);
+    return leftSize.compareTo(rightSize);
+  }
+
+  bool _isArm64Asset(Map<String, dynamic> asset) {
+    final name = (asset['name'] as String?)?.toLowerCase() ?? '';
+    final url = (asset['browser_download_url'] as String?)?.toLowerCase() ?? '';
+    return name.contains('arm64') || url.contains('arm64');
+  }
+
+  bool _isLikelyGiftLedgerReleaseAsset({
+    required String name,
+    required String url,
+    required String version,
+  }) {
+    final candidate = '$name $url';
+    if (!candidate.contains('gift_ledger')) {
+      return false;
+    }
+
+    if (_containsSuspiciousAssetMarker(candidate)) {
+      return false;
+    }
+
+    final normalizedVersion = version.toLowerCase();
+    return candidate.contains(normalizedVersion) ||
+        candidate.contains('v$normalizedVersion');
+  }
+
+  bool _containsSuspiciousAssetMarker(String candidate) {
+    const suspiciousMarkers = <String>[
+      'fasttest',
+      'debug',
+      'sample',
+      'demo',
+      'internal',
+      'dev',
+      'shulu',
+    ];
+    return suspiciousMarkers.any(candidate.contains);
+  }
+
+  bool _assetContainsVersion(Map<String, dynamic> asset, String version) {
+    final lowerVersion = version.toLowerCase();
+    final candidates = <String>[
+      (asset['name'] as String?)?.toLowerCase() ?? '',
+      (asset['browser_download_url'] as String?)?.toLowerCase() ?? '',
+    ];
+
+    for (final candidate in candidates) {
+      if (candidate.contains('v$lowerVersion') ||
+          candidate.contains(lowerVersion)) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   int _assetSizeOrMax(Map<String, dynamic> asset) {
@@ -556,6 +688,46 @@ class UpdateRepository {
       return trimmed;
     }
     return 'https://github.com$trimmed';
+  }
+
+  String? _extractVersion(String? source) {
+    if (source == null) {
+      return null;
+    }
+
+    final trimmed = source.trim();
+    if (trimmed.isEmpty) {
+      return null;
+    }
+
+    final match = _versionPattern.firstMatch(trimmed);
+    return match?.group(1)?.trim();
+  }
+
+  int _extractBuildNumber(Map<String, dynamic> asset) {
+    final candidates = <String>[
+      (asset['name'] as String?)?.trim() ?? '',
+      (asset['browser_download_url'] as String?)?.trim() ?? '',
+    ];
+
+    for (final candidate in candidates) {
+      if (candidate.isEmpty) {
+        continue;
+      }
+
+      final match = _buildNumberPattern.firstMatch(candidate);
+      final rawValue = match?.group(1);
+      if (rawValue == null || rawValue.isEmpty) {
+        continue;
+      }
+
+      final buildNumber = int.tryParse(rawValue);
+      if (buildNumber != null) {
+        return buildNumber;
+      }
+    }
+
+    return 0;
   }
 
   String _normalizeTextResponse(
