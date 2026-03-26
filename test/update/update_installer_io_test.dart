@@ -103,6 +103,24 @@ void main() {
       );
     });
 
+    test('可主动检查安装权限并拉起权限页', () async {
+      final tempDir = await Directory.systemTemp.createTemp('installer-test');
+      var requestCalls = 0;
+      final installer = IoUpdateInstaller(
+        dio: _FakeDio(),
+        directoryProvider: () async => tempDir,
+        installPermissionChecker: () async => false,
+        installPermissionRequester: () async {
+          requestCalls += 1;
+          return true;
+        },
+      );
+
+      expect(await installer.canInstallPackages(), isFalse);
+      expect(await installer.requestInstallPermission(), isTrue);
+      expect(requestCalls, 1);
+    });
+
     test('下载超时时会带超时配置并返回明确错误', () async {
       final tempDir = await Directory.systemTemp.createTemp('installer-test');
       final dio = _FakeDio(
@@ -116,7 +134,6 @@ void main() {
       final installer = IoUpdateInstaller(
         dio: dio,
         directoryProvider: () async => tempDir,
-        urlLauncher: (_) async => false,
       );
 
       await expectLater(
@@ -139,37 +156,8 @@ void main() {
       expect(dio.lastOptions?.headers?['User-Agent'], 'GiftLedgerApp/1.0');
     });
 
-    test('下载超时后会回退到系统浏览器下载', () async {
+    test('总下载超时会返回应用内错误，不再回退到浏览器', () async {
       final tempDir = await Directory.systemTemp.createTemp('installer-test');
-      Uri? launchedUri;
-      final dio = _FakeDio(
-        onDownload: (urlPath, _, __, ___, ____) async {
-          throw DioException.receiveTimeout(
-            timeout: const Duration(seconds: 1),
-            requestOptions: RequestOptions(path: urlPath),
-          );
-        },
-      );
-      final installer = IoUpdateInstaller(
-        dio: dio,
-        directoryProvider: () async => tempDir,
-        urlLauncher: (uri) async {
-          launchedUri = uri;
-          return true;
-        },
-      );
-
-      final result = await installer.downloadAndOpen(_buildTarget());
-
-      expect(result.didOpen, isTrue);
-      expect(result.savePath, 'https://example.com/gift_ledger.apk');
-      expect(result.message, '应用内下载较慢，已打开系统浏览器下载更新，请下载完成后安装。');
-      expect(launchedUri, Uri.parse('https://example.com/gift_ledger.apk'));
-    });
-
-    test('总下载超时后会回退到系统浏览器下载', () async {
-      final tempDir = await Directory.systemTemp.createTemp('installer-test');
-      Uri? launchedUri;
       final dio = _FakeDio(
         onDownload: (urlPath, _, __, ___, cancelToken) async {
           final cancelError = await cancelToken!.whenCancel;
@@ -179,74 +167,103 @@ void main() {
       final installer = IoUpdateInstaller(
         dio: dio,
         directoryProvider: () async => tempDir,
-        urlLauncher: (uri) async {
-          launchedUri = uri;
-          return true;
-        },
         downloadTotalTimeout: const Duration(milliseconds: 10),
       );
 
-      final result = await installer.downloadAndOpen(_buildTarget());
-
-      expect(result.didOpen, isTrue);
-      expect(result.message, '应用内下载较慢，已打开系统浏览器下载更新，请下载完成后安装。');
-      expect(launchedUri, Uri.parse('https://example.com/gift_ledger.apk'));
+      await expectLater(
+        installer.downloadAndOpen(_buildTarget()),
+        throwsA(
+          isA<UpdateInstallerException>().having(
+            (error) => error.message,
+            'message',
+            '下载更新包超时，请检查网络后重试。',
+          ),
+        ),
+      );
     });
 
-    test('连接异常后会回退到系统浏览器下载', () async {
+    test('持续收到下载进度时不会因为总超时提前失败', () async {
       final tempDir = await Directory.systemTemp.createTemp('installer-test');
-      Uri? launchedUri;
-      final dio = _FakeDio(
-        onDownload: (urlPath, _, __, ___, ____) async {
-          throw DioException(
-            requestOptions: RequestOptions(path: urlPath),
-            type: DioExceptionType.connectionError,
-            error: const SocketException('network unreachable'),
-          );
-        },
-      );
+      final content = utf8.encode('gift-ledger');
+      final expectedSha256 = crypto.sha256.convert(content).toString();
       final installer = IoUpdateInstaller(
-        dio: dio,
+        dio: _FakeDio(),
         directoryProvider: () async => tempDir,
-        urlLauncher: (uri) async {
-          launchedUri = uri;
-          return true;
+        fileOpener: (_) async => OpenResult(
+          type: ResultType.done,
+          message: 'done',
+        ),
+        downloadTotalTimeout: const Duration(milliseconds: 40),
+        downloader: ({
+          required Dio dio,
+          required String url,
+          required String savePath,
+          required bool deleteOnError,
+          required Options options,
+          required CancelToken cancelToken,
+          ProgressCallback? onReceiveProgress,
+        }) async {
+          onReceiveProgress?.call(1, 3);
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+          onReceiveProgress?.call(2, 3);
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+          onReceiveProgress?.call(3, 3);
+          final file = File(savePath);
+          await file.parent.create(recursive: true);
+          await file.writeAsBytes(content);
         },
       );
 
-      final result = await installer.downloadAndOpen(_buildTarget());
+      final result = await installer.downloadAndOpen(
+        _buildTarget(
+          sha256: expectedSha256,
+        ),
+      );
 
       expect(result.didOpen, isTrue);
-      expect(result.message, '应用内下载较慢，已打开系统浏览器下载更新，请下载完成后安装。');
-      expect(launchedUri, Uri.parse('https://example.com/gift_ledger.apk'));
+      expect(result.savePath, contains('gift_ledger_update_1.3.0.apk'));
+      expect(result.message, '已打开系统安装器，请按提示完成更新。');
     });
 
-    test('未知 SocketException 后会回退到系统浏览器下载', () async {
+    test('下载时会透传进度回调', () async {
       final tempDir = await Directory.systemTemp.createTemp('installer-test');
-      Uri? launchedUri;
-      final dio = _FakeDio(
-        onDownload: (urlPath, _, __, ___, ____) async {
-          throw DioException(
-            requestOptions: RequestOptions(path: urlPath),
-            type: DioExceptionType.unknown,
-            error: const SocketException('operation timed out'),
-          );
-        },
-      );
+      final content = utf8.encode('gift-ledger');
+      final expectedSha256 = crypto.sha256.convert(content).toString();
+      DownloadProgress? lastProgress;
       final installer = IoUpdateInstaller(
-        dio: dio,
+        dio: _FakeDio(),
         directoryProvider: () async => tempDir,
-        urlLauncher: (uri) async {
-          launchedUri = uri;
-          return true;
+        fileOpener: (_) async => OpenResult(
+          type: ResultType.done,
+          message: 'done',
+        ),
+        downloader: ({
+          required Dio dio,
+          required String url,
+          required String savePath,
+          required bool deleteOnError,
+          required Options options,
+          required CancelToken cancelToken,
+          ProgressCallback? onReceiveProgress,
+        }) async {
+          onReceiveProgress?.call(64, 128);
+          final file = File(savePath);
+          await file.parent.create(recursive: true);
+          await file.writeAsBytes(content);
         },
       );
 
-      final result = await installer.downloadAndOpen(_buildTarget());
+      await installer.downloadAndOpen(
+        _buildTarget(sha256: expectedSha256),
+        onProgress: (progress) {
+          lastProgress = progress;
+        },
+      );
 
-      expect(result.didOpen, isTrue);
-      expect(result.message, '应用内下载较慢，已打开系统浏览器下载更新，请下载完成后安装。');
-      expect(launchedUri, Uri.parse('https://example.com/gift_ledger.apk'));
+      expect(lastProgress, isNotNull);
+      expect(lastProgress!.receivedBytes, 64);
+      expect(lastProgress!.totalBytes, 128);
+      expect(lastProgress!.fraction, 0.5);
     });
 
     test('安装包校验失败时会删除临时文件', () async {

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../../models/update_target.dart';
+import '../../utils/semver_utils.dart';
 import '../config_service.dart';
 import 'app_build_info_service.dart';
 import 'update_installer.dart';
@@ -14,6 +15,8 @@ import 'update_resolver.dart';
 enum UpdateStateStatus {
   idle,
   checking,
+  permissionRequired,
+  downloading,
   installing,
   available,
   upToDate,
@@ -27,6 +30,7 @@ class UpdateState {
   final bool showDialog;
   final bool showRedDot;
   final bool showBanner;
+  final DownloadProgress? downloadProgress;
   final InstallResult? installResult;
   final Object? error;
   final StackTrace? stackTrace;
@@ -38,6 +42,7 @@ class UpdateState {
     this.showDialog = false,
     this.showRedDot = false,
     this.showBanner = false,
+    this.downloadProgress,
     this.installResult,
     this.error,
     this.stackTrace,
@@ -78,6 +83,10 @@ class UpdateController extends ChangeNotifier {
   UpdateChannel _selectedChannel;
   UpdateState _state = const UpdateState();
   int _checkRequestEpoch = 0;
+  bool _isInstallFlowStarting = false;
+  bool _awaitingInstallPermissionGrant = false;
+  bool _awaitingInstallCompletion = false;
+  bool _didAutoResumePendingInstall = false;
 
   UpdateState get state => _state;
   UpdateChannel get selectedChannel => _selectedChannel;
@@ -91,6 +100,7 @@ class UpdateController extends ChangeNotifier {
 
     _checkRequestEpoch += 1;
     _selectedChannel = channel;
+    _clearPendingInstallTracking();
     _state = const UpdateState();
     notifyListeners();
     unawaited(
@@ -129,6 +139,7 @@ class UpdateController extends ChangeNotifier {
           return;
         }
 
+        _clearPendingInstallTracking();
         _state = UpdateState(
           status: UpdateStateStatus.upToDate,
           lastSource: source,
@@ -148,6 +159,7 @@ class UpdateController extends ChangeNotifier {
         return;
       }
 
+      _clearPendingInstallTracking();
       _state = _buildAvailableState(
         source: source,
         target: target,
@@ -162,6 +174,7 @@ class UpdateController extends ChangeNotifier {
       final preserveVisibleTarget =
           source == UpdateCheckSource.manual && previousState.target != null;
 
+      _clearPendingInstallTracking();
       _state = UpdateState(
         status: UpdateStateStatus.error,
         lastSource: source,
@@ -186,6 +199,18 @@ class UpdateController extends ChangeNotifier {
     _state = _buildAvailableState(
       source: _state.lastSource ?? UpdateCheckSource.manual,
       target: target,
+      status: _state.status == UpdateStateStatus.error
+          ? UpdateStateStatus.available
+          : _state.status,
+      decision: const UpdatePromptDecision(
+        showDialog: false,
+        showRedDot: true,
+        showBanner: false,
+      ),
+      downloadProgress: _state.downloadProgress,
+      installResult: _state.installResult,
+      error: _state.error,
+      stackTrace: _state.stackTrace,
     );
     notifyListeners();
   }
@@ -203,6 +228,7 @@ class UpdateController extends ChangeNotifier {
     );
 
     final source = _state.lastSource ?? UpdateCheckSource.manual;
+    _clearPendingInstallTracking();
     _state = _buildAvailableState(
       source: source,
       target: target,
@@ -212,29 +238,118 @@ class UpdateController extends ChangeNotifier {
 
   Future<void> installCurrentTarget() async {
     final target = _state.target;
-    if (target == null || _state.status == UpdateStateStatus.installing) {
+    if (target == null || _isInstallFlowBusy()) {
+      return;
+    }
+
+    await _runInstallFlow(
+      target: target,
+      source: _state.lastSource ?? UpdateCheckSource.manual,
+    );
+  }
+
+  Future<void> handleAppResumed() async {
+    final target = _state.target;
+    if (target == null) {
       return;
     }
 
     final source = _state.lastSource ?? UpdateCheckSource.manual;
+
+    if (_awaitingInstallPermissionGrant) {
+      try {
+        final hasPermission = await _installer.canInstallPackages();
+        if (hasPermission) {
+          _awaitingInstallPermissionGrant = false;
+          await _runInstallFlow(
+            target: target,
+            source: source,
+            skipPermissionCheck: true,
+          );
+          return;
+        }
+
+        _awaitingInstallPermissionGrant = false;
+        _state = _buildAvailableState(
+          source: source,
+          target: target,
+          status: UpdateStateStatus.permissionRequired,
+          error: const UpdateInstallerException('尚未开启安装权限，请先授权后继续更新。'),
+        );
+        notifyListeners();
+      } catch (error, stackTrace) {
+        _awaitingInstallPermissionGrant = false;
+        _state = _buildAvailableState(
+          source: source,
+          target: target,
+          status: UpdateStateStatus.permissionRequired,
+          error: error,
+          stackTrace: stackTrace,
+        );
+        notifyListeners();
+      }
+      return;
+    }
+
+    if (!_awaitingInstallCompletion) {
+      return;
+    }
+
+    final lastInstallResult = _state.installResult;
+
+    try {
+      final buildInfo = await _appBuildInfoService.getCurrentBuildInfo();
+      if (_isBuildInfoAtLeastTarget(buildInfo, target)) {
+        _clearPendingInstallTracking();
+        _state = UpdateState(
+          status: UpdateStateStatus.upToDate,
+          lastSource: source,
+        );
+        notifyListeners();
+        return;
+      }
+    } catch (_) {
+      // 读取当前版本失败时保持安装恢复兜底，不阻断后续逻辑。
+    }
+
+    if (_didAutoResumePendingInstall ||
+        lastInstallResult == null ||
+        !_isLocalInstallPath(lastInstallResult.savePath)) {
+      _clearPendingInstallTracking();
+      _state = _buildAvailableState(
+        source: source,
+        target: target,
+        installResult: lastInstallResult,
+      );
+      notifyListeners();
+      return;
+    }
+
+    _didAutoResumePendingInstall = true;
     _state = _buildAvailableState(
       source: source,
       target: target,
       status: UpdateStateStatus.installing,
+      installResult: lastInstallResult,
     );
     notifyListeners();
 
     try {
-      final installResult = await _installer.downloadAndOpen(target);
+      final reopenedResult = await _installer.reopenDownloadedPackage(
+        lastInstallResult.savePath,
+      );
       _state = _buildAvailableState(
         source: source,
         target: target,
-        installResult: installResult,
+        status: UpdateStateStatus.installing,
+        installResult: reopenedResult,
       );
     } catch (error, stackTrace) {
+      _clearPendingInstallTracking();
       _state = _buildAvailableState(
         source: source,
         target: target,
+        installResult: lastInstallResult,
         error: error,
         stackTrace: stackTrace,
       );
@@ -243,11 +358,179 @@ class UpdateController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> _runInstallFlow({
+    required UpdateTarget target,
+    required UpdateCheckSource source,
+    bool skipPermissionCheck = false,
+  }) async {
+    if (_isInstallFlowStarting) {
+      return;
+    }
+
+    _isInstallFlowStarting = true;
+    try {
+      await _startInstallFlow(
+        target: target,
+        source: source,
+        skipPermissionCheck: skipPermissionCheck,
+      );
+    } finally {
+      _isInstallFlowStarting = false;
+    }
+  }
+
+  Future<void> _startInstallFlow({
+    required UpdateTarget target,
+    required UpdateCheckSource source,
+    bool skipPermissionCheck = false,
+  }) async {
+    try {
+      if (!skipPermissionCheck) {
+        final hasPermission = await _installer.canInstallPackages();
+        if (!hasPermission) {
+          _state = _buildAvailableState(
+            source: source,
+            target: target,
+            status: UpdateStateStatus.permissionRequired,
+          );
+          _awaitingInstallPermissionGrant = true;
+          notifyListeners();
+
+          final opened = await _installer.requestInstallPermission();
+          if (!opened) {
+            throw const UpdateInstallerException('无法打开安装权限设置页，请稍后重试。');
+          }
+          return;
+        }
+      }
+
+      _awaitingInstallPermissionGrant = false;
+      _state = _buildAvailableState(
+        source: source,
+        target: target,
+        status: UpdateStateStatus.downloading,
+        downloadProgress: const DownloadProgress(
+          receivedBytes: 0,
+          totalBytes: 0,
+        ),
+      );
+      notifyListeners();
+
+      final installResult = await _installer.downloadAndOpen(
+        target,
+        onProgress: (progress) {
+          _emitDownloadProgress(
+            source: source,
+            target: target,
+            progress: progress,
+          );
+        },
+      );
+
+      _awaitingInstallCompletion = installResult.didOpen;
+      _didAutoResumePendingInstall = false;
+      _state = _buildAvailableState(
+        source: source,
+        target: target,
+        status: UpdateStateStatus.installing,
+        installResult: installResult,
+      );
+    } catch (error, stackTrace) {
+      _clearPendingInstallTracking();
+      final resolvedStatus =
+          _state.status == UpdateStateStatus.permissionRequired
+              ? UpdateStateStatus.permissionRequired
+              : UpdateStateStatus.available;
+      _state = _buildAvailableState(
+        source: source,
+        target: target,
+        status: resolvedStatus,
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+
+    notifyListeners();
+  }
+
+  void _emitDownloadProgress({
+    required UpdateCheckSource source,
+    required UpdateTarget target,
+    required DownloadProgress progress,
+  }) {
+    final currentProgress = _state.downloadProgress;
+    final didChange =
+        currentProgress?.receivedBytes != progress.receivedBytes ||
+            currentProgress?.totalBytes != progress.totalBytes ||
+            _state.status != UpdateStateStatus.downloading;
+    if (!didChange) {
+      return;
+    }
+
+    _state = _buildAvailableState(
+      source: source,
+      target: target,
+      status: UpdateStateStatus.downloading,
+      downloadProgress: progress,
+    );
+    notifyListeners();
+  }
+
+  bool _isInstallFlowBusy() {
+    if (_isInstallFlowStarting || _awaitingInstallPermissionGrant) {
+      return true;
+    }
+
+    return _state.status == UpdateStateStatus.checking ||
+        _state.status == UpdateStateStatus.downloading ||
+        _state.status == UpdateStateStatus.installing;
+  }
+
+  void _clearPendingInstallTracking() {
+    _awaitingInstallPermissionGrant = false;
+    _awaitingInstallCompletion = false;
+    _didAutoResumePendingInstall = false;
+  }
+
+  bool _isBuildInfoAtLeastTarget(AppBuildInfo buildInfo, UpdateTarget target) {
+    final targetVersion = target.version;
+    if (targetVersion == null || targetVersion.isEmpty) {
+      return false;
+    }
+
+    final versionComparison = compareSemver(buildInfo.version, targetVersion);
+    if (versionComparison > 0) {
+      return true;
+    }
+    if (versionComparison < 0) {
+      return false;
+    }
+
+    final currentBuildNumber = buildInfo.buildNumber;
+    final targetBuildNumber = target.buildNumber;
+    if (targetBuildNumber == null) {
+      return true;
+    }
+
+    return currentBuildNumber >= targetBuildNumber;
+  }
+
+  bool _isLocalInstallPath(String path) {
+    final normalizedPath = path.trim().toLowerCase();
+    if (normalizedPath.isEmpty) {
+      return false;
+    }
+
+    return !normalizedPath.startsWith('http://') &&
+        !normalizedPath.startsWith('https://');
+  }
+
   UpdateState _buildAvailableState({
     required UpdateCheckSource source,
     required UpdateTarget target,
     UpdateStateStatus status = UpdateStateStatus.available,
     UpdatePromptDecision? decision,
+    DownloadProgress? downloadProgress,
     InstallResult? installResult,
     Object? error,
     StackTrace? stackTrace,
@@ -267,6 +550,7 @@ class UpdateController extends ChangeNotifier {
       showDialog: resolvedDecision.showDialog,
       showRedDot: resolvedDecision.showRedDot,
       showBanner: resolvedDecision.showBanner,
+      downloadProgress: downloadProgress,
       installResult: installResult,
       error: error,
       stackTrace: stackTrace,
@@ -319,4 +603,3 @@ class UpdateController extends ChangeNotifier {
 
   bool _isActiveCheck(int requestEpoch) => requestEpoch == _checkRequestEpoch;
 }
-

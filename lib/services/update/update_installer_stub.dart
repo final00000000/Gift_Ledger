@@ -11,7 +11,27 @@ class StubUpdateInstaller implements UpdateInstaller {
   const StubUpdateInstaller();
 
   @override
-  Future<InstallResult> downloadAndOpen(UpdateTarget target) {
+  Future<bool> canInstallPackages() async {
+    return true;
+  }
+
+  @override
+  Future<bool> requestInstallPermission() async {
+    return true;
+  }
+
+  @override
+  Future<InstallResult> downloadAndOpen(
+    UpdateTarget target, {
+    DownloadProgressCallback? onProgress,
+  }) async {
+    throw const UpdateInstallerException(
+      'Update installation is not supported on this platform.',
+    );
+  }
+
+  @override
+  Future<InstallResult> reopenDownloadedPackage(String filePath) async {
     throw const UpdateInstallerException(
       'Update installation is not supported on this platform.',
     );

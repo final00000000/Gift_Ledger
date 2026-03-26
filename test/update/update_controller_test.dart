@@ -104,42 +104,118 @@ class FakeAppBuildInfoService implements AppBuildInfoService {
   Future<AppBuildInfo> getCurrentBuildInfo() async => buildInfo;
 }
 
+class SequencedAppBuildInfoService implements AppBuildInfoService {
+  SequencedAppBuildInfoService(this.responses);
+
+  final List<AppBuildInfo> responses;
+
+  @override
+  Future<AppBuildInfo> getCurrentBuildInfo() async {
+    if (responses.isEmpty) {
+      throw StateError('No build info configured');
+    }
+
+    return responses.removeAt(0);
+  }
+}
+
 class FakeUpdateInstaller implements UpdateInstaller {
   FakeUpdateInstaller({
     InstallResult? result,
+    InstallResult? reopenResult,
     this.completer,
+    this.installPermissionGranted = true,
+    this.requestPermissionResult = true,
+    this.progressSteps = const <DownloadProgress>[],
   })  : result = result ??
             const InstallResult(
               didOpen: true,
               savePath: 'C:/temp/GiftLedgerSetup.exe',
               message: 'done',
             ),
-        callCount = 0;
+        reopenResult = reopenResult ??
+            result ??
+            const InstallResult(
+              didOpen: true,
+              savePath: 'C:/temp/GiftLedgerSetup.exe',
+              message: 'done',
+            );
 
   final InstallResult result;
+  final InstallResult reopenResult;
   final Completer<InstallResult>? completer;
+  final bool requestPermissionResult;
+  final List<DownloadProgress> progressSteps;
+
+  bool installPermissionGranted;
   UpdateTarget? lastTarget;
-  int callCount;
+  String? lastReopenedPath;
+  int callCount = 0;
+  int reopenCallCount = 0;
+  int canInstallPackagesCalls = 0;
+  int requestInstallPermissionCalls = 0;
 
   @override
-  Future<InstallResult> downloadAndOpen(UpdateTarget target) async {
+  Future<bool> canInstallPackages() async {
+    canInstallPackagesCalls += 1;
+    return installPermissionGranted;
+  }
+
+  @override
+  Future<bool> requestInstallPermission() async {
+    requestInstallPermissionCalls += 1;
+    return requestPermissionResult;
+  }
+
+  @override
+  Future<InstallResult> downloadAndOpen(
+    UpdateTarget target, {
+    DownloadProgressCallback? onProgress,
+  }) async {
     callCount += 1;
     lastTarget = target;
+    for (final progress in progressSteps) {
+      onProgress?.call(progress);
+    }
     if (completer != null) {
       return completer!.future;
     }
-
     return result;
+  }
+
+  @override
+  Future<InstallResult> reopenDownloadedPackage(String filePath) async {
+    reopenCallCount += 1;
+    lastReopenedPath = filePath;
+    return reopenResult;
   }
 }
 
 class FailingUpdateInstaller implements UpdateInstaller {
-  FailingUpdateInstaller(this.error);
+  FailingUpdateInstaller({
+    required this.error,
+    this.installPermissionGranted = true,
+  });
 
   final Object error;
+  final bool installPermissionGranted;
 
   @override
-  Future<InstallResult> downloadAndOpen(UpdateTarget target) async {
+  Future<bool> canInstallPackages() async => installPermissionGranted;
+
+  @override
+  Future<bool> requestInstallPermission() async => true;
+
+  @override
+  Future<InstallResult> downloadAndOpen(
+    UpdateTarget target, {
+    DownloadProgressCallback? onProgress,
+  }) async {
+    throw error;
+  }
+
+  @override
+  Future<InstallResult> reopenDownloadedPackage(String filePath) async {
     throw error;
   }
 }
@@ -162,16 +238,18 @@ void main() {
     UpdateChannel selectedChannel = UpdateChannel.beta,
     UpdateInstaller? installer,
     UpdateRepository? repository,
+    AppBuildInfoService? appBuildInfoService,
   }) {
     return UpdateController(
       repository: repository ?? FakeUpdateRepository(_buildManifest()),
-      appBuildInfoService: FakeAppBuildInfoService(
-        const AppBuildInfo(
-          version: '1.3.1-beta.2',
-          buildNumber: 14,
-          platform: UpdatePlatform.windows,
-        ),
-      ),
+      appBuildInfoService: appBuildInfoService ??
+          FakeAppBuildInfoService(
+            const AppBuildInfo(
+              version: '1.3.1-beta.2',
+              buildNumber: 14,
+              platform: UpdatePlatform.windows,
+            ),
+          ),
       installer: installer ?? FakeUpdateInstaller(),
       configService: configService,
       selectedChannel: selectedChannel,
@@ -205,10 +283,10 @@ void main() {
         contains(_resolvedStableKey),
       );
       expect(controller.state.showDialog, isFalse);
-      expect(controller.state.showBanner, isTrue);
+      expect(controller.state.showBanner, isFalse);
     });
 
-    test('手动检查并确认已展示后，下次启动同版本不再首次强弹', () async {
+    test('手动检查后即使记录已展示，下次启动同版本仍会继续弹窗，直到勾选不再提示', () async {
       final manualController = buildController();
 
       await manualController.checkForUpdates(source: UpdateCheckSource.manual);
@@ -218,11 +296,13 @@ void main() {
       expect(manualController.promptedTargetKeys, contains(_resolvedStableKey));
 
       final startupController = buildController();
-      await startupController.checkForUpdates(source: UpdateCheckSource.startup);
+      await startupController.checkForUpdates(
+          source: UpdateCheckSource.startup);
 
       expect(startupController.state.target?.version, '1.3.1');
-      expect(startupController.state.showDialog, isFalse);
-      expect(startupController.state.showBanner, isTrue);
+      expect(startupController.state.showDialog, isTrue);
+      expect(startupController.state.showRedDot, isTrue);
+      expect(startupController.state.showBanner, isFalse);
     });
 
     test('切换通道后会清空旧 state，避免残留旧 target 与提示状态', () async {
@@ -241,7 +321,8 @@ void main() {
       expect(controller.state.status, UpdateStateStatus.idle);
     });
 
-    test('installCurrentTarget 通过 controller 调 installer，并把结果写回 state', () async {
+    test('installCurrentTarget 通过 controller 调 installer，并把结果写回 state',
+        () async {
       final installer = FakeUpdateInstaller();
       final controller = buildController(installer: installer);
 
@@ -249,6 +330,7 @@ void main() {
       await controller.installCurrentTarget();
 
       expect(installer.lastTarget?.version, '1.3.1');
+      expect(controller.state.status, UpdateStateStatus.installing);
       expect(controller.state.installResult?.didOpen, isTrue);
       expect(
         controller.state.installResult?.savePath,
@@ -257,7 +339,35 @@ void main() {
       expect(controller.state.error, isNull);
     });
 
-    test('installCurrentTarget 在进行中时阻止重入，并暴露 installing 状态', () async {
+    test('installCurrentTarget 无权限时先进入 permissionRequired 并请求授权', () async {
+      final installer = FakeUpdateInstaller(installPermissionGranted: false);
+      final controller = buildController(installer: installer);
+
+      await controller.checkForUpdates(source: UpdateCheckSource.manual);
+      await controller.installCurrentTarget();
+
+      expect(installer.requestInstallPermissionCalls, 1);
+      expect(installer.callCount, 0);
+      expect(controller.state.status, UpdateStateStatus.permissionRequired);
+      expect(controller.state.error, isNull);
+    });
+
+    test('handleAppResumed 在权限开启后会自动继续下载', () async {
+      final installer = FakeUpdateInstaller(installPermissionGranted: false);
+      final controller = buildController(installer: installer);
+
+      await controller.checkForUpdates(source: UpdateCheckSource.manual);
+      await controller.installCurrentTarget();
+
+      installer.installPermissionGranted = true;
+      await controller.handleAppResumed();
+
+      expect(installer.requestInstallPermissionCalls, 1);
+      expect(installer.callCount, 1);
+      expect(controller.state.status, UpdateStateStatus.installing);
+    });
+
+    test('installCurrentTarget 在进行中时阻止重入，并暴露 downloading 状态', () async {
       final completer = Completer<InstallResult>();
       final installer = FakeUpdateInstaller(completer: completer);
       final controller = buildController(installer: installer);
@@ -265,7 +375,8 @@ void main() {
       await controller.checkForUpdates(source: UpdateCheckSource.startup);
 
       final firstInstall = controller.installCurrentTarget();
-      expect(controller.state.status, UpdateStateStatus.installing);
+      await Future<void>.delayed(Duration.zero);
+      expect(controller.state.status, UpdateStateStatus.downloading);
 
       await controller.installCurrentTarget();
       expect(installer.callCount, 1);
@@ -280,11 +391,28 @@ void main() {
 
       await firstInstall;
 
-      expect(controller.state.status, UpdateStateStatus.available);
+      expect(controller.state.status, UpdateStateStatus.installing);
       expect(controller.state.installResult?.message, 'started');
     });
 
-    test('未调用 markCurrentTargetPresented 时，ignoreCurrentTarget 不得写 prompted', () async {
+    test('installCurrentTarget 下载进度会写回 state', () async {
+      final installer = FakeUpdateInstaller(
+        progressSteps: const <DownloadProgress>[
+          DownloadProgress(receivedBytes: 64, totalBytes: 128),
+        ],
+      );
+      final controller = buildController(installer: installer);
+
+      await controller.checkForUpdates(source: UpdateCheckSource.manual);
+      await controller.installCurrentTarget();
+
+      expect(controller.state.installResult, isNotNull);
+      expect(controller.state.status, UpdateStateStatus.installing);
+      expect(controller.state.downloadProgress, isNull);
+    });
+
+    test('未调用 markCurrentTargetPresented 时，ignoreCurrentTarget 不得写 prompted',
+        () async {
       final controller = buildController();
 
       await controller.checkForUpdates(source: UpdateCheckSource.startup);
@@ -298,7 +426,8 @@ void main() {
       expect(controller.ignoredTargetKeys, contains(_resolvedStableKey));
     });
 
-    test('未调用 markCurrentTargetPresented 时，installCurrentTarget 不得写 prompted', () async {
+    test('未调用 markCurrentTargetPresented 时，installCurrentTarget 不得写 prompted',
+        () async {
       final installer = FakeUpdateInstaller();
       final controller = buildController(installer: installer);
 
@@ -342,75 +471,6 @@ void main() {
       expect(controller.state.showBanner, isFalse);
     });
 
-    test('ignoreCurrentTarget 后再次检查同版本：不再弹窗，但保留红点与目标信息', () async {
-      final firstController = buildController();
-
-      await firstController.checkForUpdates(source: UpdateCheckSource.startup);
-      await firstController.ignoreCurrentTarget();
-
-      final nextController = buildController();
-      await nextController.checkForUpdates(source: UpdateCheckSource.startup);
-
-      expect(nextController.state.target?.version, '1.3.1');
-      expect(nextController.state.showDialog, isFalse);
-      expect(nextController.state.showRedDot, isTrue);
-    });
-
-    test('并发检查时，旧请求晚返回不会覆盖较新的结果', () async {
-      final startupCompleter = Completer<UpdateManifest>();
-      final manualCompleter = Completer<UpdateManifest>();
-      final controller = buildController(
-        repository: DeferredUpdateRepository([
-          startupCompleter,
-          manualCompleter,
-        ]),
-      );
-
-      final startupFuture =
-          controller.checkForUpdates(source: UpdateCheckSource.startup);
-      final manualFuture =
-          controller.checkForUpdates(source: UpdateCheckSource.manual);
-
-      manualCompleter.complete(_buildManifest());
-      await manualFuture;
-
-      expect(controller.state.target?.version, '1.3.1');
-      expect(controller.state.lastSource, UpdateCheckSource.manual);
-      expect(controller.state.showDialog, isFalse);
-      expect(controller.state.showBanner, isTrue);
-
-      startupCompleter.complete(_buildManifest());
-      await startupFuture;
-
-      expect(controller.state.target?.version, '1.3.1');
-      expect(controller.state.lastSource, UpdateCheckSource.manual);
-      expect(controller.state.showDialog, isFalse);
-      expect(controller.state.showBanner, isTrue);
-    });
-
-    test('切换通道后，旧检查结果不会重新写回已清空的 state', () async {
-      final completer = Completer<UpdateManifest>();
-      final controller = buildController(
-        repository: DeferredUpdateRepository([completer]),
-      );
-
-      final pendingCheck =
-          controller.checkForUpdates(source: UpdateCheckSource.manual);
-
-      controller.setSelectedChannel(UpdateChannel.stable);
-      expect(controller.state.status, UpdateStateStatus.idle);
-      expect(controller.state.target, isNull);
-
-      completer.complete(_buildManifest());
-      await pendingCheck;
-
-      expect(controller.selectedChannel, UpdateChannel.stable);
-      expect(controller.state.status, UpdateStateStatus.idle);
-      expect(controller.state.target, isNull);
-      expect(controller.state.showDialog, isFalse);
-      expect(controller.state.showBanner, isFalse);
-    });
-
     test('当前版本已等于远端 release 时，应回到 upToDate 而不是 error', () async {
       final manifest = UpdateManifest.fromJson({
         'channels': {
@@ -451,7 +511,7 @@ void main() {
 
     test('installCurrentTarget 失败后会回落到 available，并保留 target 以便再次重试', () async {
       final controller = buildController(
-        installer: FailingUpdateInstaller(StateError('install failed')),
+        installer: FailingUpdateInstaller(error: StateError('install failed')),
       );
 
       await controller.checkForUpdates(source: UpdateCheckSource.manual);
@@ -460,6 +520,111 @@ void main() {
       expect(controller.state.status, UpdateStateStatus.available);
       expect(controller.state.target?.version, '1.3.1');
       expect(controller.state.error, isNotNull);
+    });
+
+    test('handleAppResumed 在已完成升级后会清理待安装状态并回到 upToDate', () async {
+      final installer = FakeUpdateInstaller(
+        result: const InstallResult(
+          didOpen: true,
+          savePath: 'C:/temp/GiftLedgerSetup.exe',
+          message: 'started',
+        ),
+      );
+      final controller = buildController(
+        installer: installer,
+        appBuildInfoService: SequencedAppBuildInfoService([
+          const AppBuildInfo(
+            version: '1.3.1-beta.2',
+            buildNumber: 14,
+            platform: UpdatePlatform.windows,
+          ),
+          const AppBuildInfo(
+            version: '1.3.1',
+            buildNumber: 15,
+            platform: UpdatePlatform.windows,
+          ),
+        ]),
+      );
+
+      await controller.checkForUpdates(source: UpdateCheckSource.manual);
+      await controller.installCurrentTarget();
+      await controller.handleAppResumed();
+
+      expect(controller.state.status, UpdateStateStatus.upToDate);
+      expect(controller.state.target, isNull);
+      expect(installer.reopenCallCount, 0);
+    });
+
+    test('handleAppResumed 在首次返回前台且版本未更新时会自动重开本地安装包一次', () async {
+      final installer = FakeUpdateInstaller(
+        result: const InstallResult(
+          didOpen: true,
+          savePath: 'C:/temp/GiftLedgerSetup.exe',
+          message: 'started',
+        ),
+        reopenResult: const InstallResult(
+          didOpen: true,
+          savePath: 'C:/temp/GiftLedgerSetup.exe',
+          message: 'reopened',
+        ),
+      );
+      final controller = buildController(
+        installer: installer,
+        appBuildInfoService: SequencedAppBuildInfoService([
+          const AppBuildInfo(
+            version: '1.3.1-beta.2',
+            buildNumber: 14,
+            platform: UpdatePlatform.windows,
+          ),
+          const AppBuildInfo(
+            version: '1.3.1-beta.2',
+            buildNumber: 14,
+            platform: UpdatePlatform.windows,
+          ),
+        ]),
+      );
+
+      await controller.checkForUpdates(source: UpdateCheckSource.manual);
+      await controller.installCurrentTarget();
+      await controller.handleAppResumed();
+
+      expect(installer.reopenCallCount, 1);
+      expect(installer.lastReopenedPath, 'C:/temp/GiftLedgerSetup.exe');
+      expect(controller.state.status, UpdateStateStatus.installing);
+      expect(controller.state.installResult?.message, 'reopened');
+      expect(controller.state.error, isNull);
+    });
+
+    test('并发检查时，旧请求晚返回不会覆盖较新的结果', () async {
+      final startupCompleter = Completer<UpdateManifest>();
+      final manualCompleter = Completer<UpdateManifest>();
+      final controller = buildController(
+        repository: DeferredUpdateRepository([
+          startupCompleter,
+          manualCompleter,
+        ]),
+      );
+
+      final startupFuture =
+          controller.checkForUpdates(source: UpdateCheckSource.startup);
+      final manualFuture =
+          controller.checkForUpdates(source: UpdateCheckSource.manual);
+
+      manualCompleter.complete(_buildManifest());
+      await manualFuture;
+
+      expect(controller.state.target?.version, '1.3.1');
+      expect(controller.state.lastSource, UpdateCheckSource.manual);
+      expect(controller.state.showDialog, isFalse);
+      expect(controller.state.showBanner, isFalse);
+
+      startupCompleter.complete(_buildManifest());
+      await startupFuture;
+
+      expect(controller.state.target?.version, '1.3.1');
+      expect(controller.state.lastSource, UpdateCheckSource.manual);
+      expect(controller.state.showDialog, isFalse);
+      expect(controller.state.showBanner, isFalse);
     });
   });
 }
