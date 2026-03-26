@@ -7,14 +7,14 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../models/update_target.dart';
 import 'update_installer.dart';
 
 typedef DownloadDirectoryProvider = Future<Directory> Function();
 typedef FileOpener = Future<OpenResult> Function(String filePath);
-typedef UrlLauncher = Future<bool> Function(Uri uri);
+typedef InstallPermissionChecker = Future<bool> Function();
+typedef InstallPermissionRequester = Future<bool> Function();
 typedef UpdateDownloader = Future<void> Function({
   required Dio dio,
   required String url,
@@ -22,6 +22,7 @@ typedef UpdateDownloader = Future<void> Function({
   required bool deleteOnError,
   required Options options,
   required CancelToken cancelToken,
+  ProgressCallback? onReceiveProgress,
 });
 
 const MethodChannel _appInstallerChannel = MethodChannel(
@@ -60,8 +61,42 @@ Future<OpenResult> _defaultPackageFileOpener(String filePath) async {
   }
 }
 
-Future<bool> _defaultUrlLauncher(Uri uri) {
-  return launchUrl(uri, mode: LaunchMode.externalApplication);
+Future<bool> _defaultInstallPermissionChecker() async {
+  if (!Platform.isAndroid) {
+    return true;
+  }
+
+  try {
+    final granted = await _appInstallerChannel.invokeMethod<bool>(
+      'canInstallPackages',
+    );
+    return granted ?? false;
+  } on PlatformException catch (error) {
+    throw UpdateInstallerException(
+      error.message ?? '无法检查安装权限，请稍后重试。',
+    );
+  } catch (_) {
+    throw const UpdateInstallerException('无法检查安装权限，请稍后重试。');
+  }
+}
+
+Future<bool> _defaultInstallPermissionRequester() async {
+  if (!Platform.isAndroid) {
+    return true;
+  }
+
+  try {
+    final opened = await _appInstallerChannel.invokeMethod<bool>(
+      'openInstallPermissionSettings',
+    );
+    return opened ?? false;
+  } on PlatformException catch (error) {
+    throw UpdateInstallerException(
+      error.message ?? '无法打开安装权限设置页，请稍后重试。',
+    );
+  } catch (_) {
+    throw const UpdateInstallerException('无法打开安装权限设置页，请稍后重试。');
+  }
 }
 
 Future<void> defaultUpdateDownloader({
@@ -71,6 +106,7 @@ Future<void> defaultUpdateDownloader({
   required bool deleteOnError,
   required Options options,
   required CancelToken cancelToken,
+  ProgressCallback? onReceiveProgress,
 }) async {
   int lastLoggedPercent = -1;
 
@@ -81,6 +117,8 @@ Future<void> defaultUpdateDownloader({
     options: options,
     cancelToken: cancelToken,
     onReceiveProgress: (received, total) {
+      onReceiveProgress?.call(received, total);
+
       if (!kDebugMode || total <= 0) {
         return;
       }
@@ -103,7 +141,8 @@ UpdateInstaller createUpdateInstaller({
   Dio? dio,
   DownloadDirectoryProvider? directoryProvider,
   FileOpener? fileOpener,
-  UrlLauncher? urlLauncher,
+  InstallPermissionChecker? installPermissionChecker,
+  InstallPermissionRequester? installPermissionRequester,
   UpdateDownloader? downloader,
   Duration downloadTotalTimeout = IoUpdateInstaller.defaultDownloadTotalTimeout,
 }) {
@@ -111,7 +150,8 @@ UpdateInstaller createUpdateInstaller({
     dio: dio,
     directoryProvider: directoryProvider,
     fileOpener: fileOpener,
-    urlLauncher: urlLauncher,
+    installPermissionChecker: installPermissionChecker,
+    installPermissionRequester: installPermissionRequester,
     downloader: downloader,
     downloadTotalTimeout: downloadTotalTimeout,
   );
@@ -128,25 +168,43 @@ class IoUpdateInstaller implements UpdateInstaller {
     Dio? dio,
     DownloadDirectoryProvider? directoryProvider,
     FileOpener? fileOpener,
-    UrlLauncher? urlLauncher,
+    InstallPermissionChecker? installPermissionChecker,
+    InstallPermissionRequester? installPermissionRequester,
     UpdateDownloader? downloader,
     Duration downloadTotalTimeout = defaultDownloadTotalTimeout,
   })  : _dio = dio ?? Dio(),
         _directoryProvider = directoryProvider ?? getTemporaryDirectory,
         _fileOpener = fileOpener ?? _defaultPackageFileOpener,
-        _urlLauncher = urlLauncher ?? _defaultUrlLauncher,
+        _installPermissionChecker =
+            installPermissionChecker ?? _defaultInstallPermissionChecker,
+        _installPermissionRequester =
+            installPermissionRequester ?? _defaultInstallPermissionRequester,
         _downloader = downloader ?? defaultUpdateDownloader,
         _downloadTotalTimeout = downloadTotalTimeout;
 
   final Dio _dio;
   final DownloadDirectoryProvider _directoryProvider;
   final FileOpener _fileOpener;
-  final UrlLauncher _urlLauncher;
+  final InstallPermissionChecker _installPermissionChecker;
+  final InstallPermissionRequester _installPermissionRequester;
   final UpdateDownloader _downloader;
   final Duration _downloadTotalTimeout;
 
   @override
-  Future<InstallResult> downloadAndOpen(UpdateTarget target) async {
+  Future<bool> canInstallPackages() {
+    return _installPermissionChecker();
+  }
+
+  @override
+  Future<bool> requestInstallPermission() {
+    return _installPermissionRequester();
+  }
+
+  @override
+  Future<InstallResult> downloadAndOpen(
+    UpdateTarget target, {
+    DownloadProgressCallback? onProgress,
+  }) async {
     final downloadUrl = target.downloadUrl;
     final sha256 = target.sha256;
     final version = target.version;
@@ -167,16 +225,23 @@ class IoUpdateInstaller implements UpdateInstaller {
       _buildFileName(version: version, packageType: packageType),
     );
     final cancelToken = CancelToken();
+    int lastReceivedBytes = 0;
     var triggeredByTotalTimeout = false;
     Timer? totalTimeoutTimer;
 
-    try {
+    void restartTotalTimeoutTimer() {
+      totalTimeoutTimer?.cancel();
       totalTimeoutTimer = Timer(_downloadTotalTimeout, () {
         triggeredByTotalTimeout = true;
         if (!cancelToken.isCancelled) {
           cancelToken.cancel(_downloadTimeoutReason);
         }
       });
+    }
+
+    try {
+      debugPrint('IoUpdateInstaller start download: $downloadUrl');
+      restartTotalTimeoutTimer();
 
       await _downloader(
         dio: _dio,
@@ -185,24 +250,38 @@ class IoUpdateInstaller implements UpdateInstaller {
         deleteOnError: true,
         options: _buildDownloadOptions(),
         cancelToken: cancelToken,
+        onReceiveProgress: (received, total) {
+          onProgress?.call(
+            DownloadProgress(
+              receivedBytes: received,
+              totalBytes: total,
+            ),
+          );
+
+          if (received <= lastReceivedBytes) {
+            return;
+          }
+
+          lastReceivedBytes = received;
+          restartTotalTimeoutTimer();
+          if (kDebugMode) {
+            debugPrint(
+              'IoUpdateInstaller keepalive: received=$received total=$total',
+            );
+          }
+        },
       );
-      totalTimeoutTimer.cancel();
+      totalTimeoutTimer?.cancel();
     } on DioException catch (error) {
       totalTimeoutTimer?.cancel();
-
-      final didFallbackToBrowser = await _tryFallbackToBrowser(
-        downloadUrl: downloadUrl,
-        triggeredByTotalTimeout: triggeredByTotalTimeout,
-        error: error,
+      debugPrint(
+        'IoUpdateInstaller download failed: '
+        'type=${error.type}, '
+        'message=${error.message}, '
+        'error=${error.error}, '
+        'timedOut=$triggeredByTotalTimeout, '
+        'received=$lastReceivedBytes',
       );
-      if (didFallbackToBrowser) {
-        await _deleteIfExists(savePath);
-        return InstallResult(
-          didOpen: true,
-          savePath: downloadUrl,
-          message: '应用内下载较慢，已打开系统浏览器下载更新，请下载完成后安装。',
-        );
-      }
 
       await _deleteIfExists(savePath);
       throw UpdateInstallerException(
@@ -223,69 +302,37 @@ class IoUpdateInstaller implements UpdateInstaller {
       throw const UpdateInstallerException('安装包校验失败，请重新检查更新后再试。');
     }
 
-    final openResult = await _fileOpener(savePath);
+    return _openDownloadedPackage(savePath);
+  }
+
+  @override
+  Future<InstallResult> reopenDownloadedPackage(String filePath) async {
+    final normalizedPath = filePath.trim();
+    if (normalizedPath.isEmpty ||
+        normalizedPath.startsWith('http://') ||
+        normalizedPath.startsWith('https://')) {
+      throw const UpdateInstallerException('安装包不存在，请重新下载更新。');
+    }
+
+    final packageFile = File(normalizedPath);
+    if (!await packageFile.exists()) {
+      throw const UpdateInstallerException('安装包不存在，请重新下载更新。');
+    }
+
+    return _openDownloadedPackage(normalizedPath);
+  }
+
+  Future<InstallResult> _openDownloadedPackage(String filePath) async {
+    final openResult = await _fileOpener(filePath);
     if (openResult.type != ResultType.done) {
       throw UpdateInstallerException('无法打开系统安装器：${openResult.message}');
     }
 
     return InstallResult(
       didOpen: true,
-      savePath: savePath,
+      savePath: filePath,
       message: _normalizeOpenResultMessage(openResult.message),
     );
-  }
-
-  Future<bool> _tryFallbackToBrowser({
-    required String downloadUrl,
-    required bool triggeredByTotalTimeout,
-    required DioException error,
-  }) async {
-    if (!_shouldFallbackToBrowser(
-      error: error,
-      triggeredByTotalTimeout: triggeredByTotalTimeout,
-    )) {
-      return false;
-    }
-
-    final uri = Uri.tryParse(downloadUrl);
-    if (uri == null) {
-      return false;
-    }
-
-    try {
-      return await _urlLauncher(uri);
-    } catch (_) {
-      return false;
-    }
-  }
-
-  bool _shouldFallbackToBrowser({
-    required DioException error,
-    required bool triggeredByTotalTimeout,
-  }) {
-    if (triggeredByTotalTimeout) {
-      return true;
-    }
-
-    final errorMessage = (error.message ?? '').toLowerCase();
-
-    switch (error.type) {
-      case DioExceptionType.connectionTimeout:
-      case DioExceptionType.sendTimeout:
-      case DioExceptionType.receiveTimeout:
-        return true;
-      case DioExceptionType.cancel:
-        return error.error == _downloadTimeoutReason ||
-            error.message == _downloadTimeoutReason;
-      case DioExceptionType.connectionError:
-        return true;
-      case DioExceptionType.unknown:
-        return error.error is SocketException ||
-            errorMessage.contains('timed out');
-      case DioExceptionType.badResponse:
-      case DioExceptionType.badCertificate:
-        return false;
-    }
   }
 
   Options _buildDownloadOptions() {
@@ -323,6 +370,10 @@ class IoUpdateInstaller implements UpdateInstaller {
         }
         return '更新包下载失败（HTTP $statusCode），请稍后重试。';
       case DioExceptionType.cancel:
+        if (error.error == _downloadTimeoutReason ||
+            error.message == _downloadTimeoutReason) {
+          return '下载更新包超时，请检查网络后重试。';
+        }
         return '更新下载已取消。';
       case DioExceptionType.badCertificate:
         return '更新包证书校验失败，请稍后重试。';
