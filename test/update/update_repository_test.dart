@@ -245,6 +245,67 @@ void main() {
     expect(manifest.beta.android?.version, '1.2.9-beta.1');
     expect(manifest.beta.android?.buildNumber, 1312);
   });
+  test('UpdateRepository 能解析新版 release 资产命名与高位 build 号', () async {
+    final repository = UpdateRepository(
+      configService: configService,
+      fetcher: (url, options) async {
+        if (url == UpdateRepository.githubReleasesApiUrl) {
+          return jsonEncode([
+            {
+              'tag_name': 'v1.3.1',
+              'draft': false,
+              'prerelease': false,
+              'body': '稳定版发布说明',
+              'assets': [
+                {
+                  'name': 'gift_ledger-stable-android-v1.3.1-build1030199.apk',
+                  'browser_download_url':
+                      'https://github.com/final00000000/Gift_Ledger/releases/download/v1.3.1/gift_ledger-stable-android-v1.3.1-build1030199.apk',
+                  'digest':
+                      'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+                },
+              ],
+            },
+            {
+              'tag_name': 'v1.3.1-beta.2',
+              'draft': false,
+              'prerelease': true,
+              'body': 'Beta 发布说明',
+              'assets': [
+                {
+                  'name': 'gift_ledger-beta-android-v1.3.1-beta.2-build1030102.apk',
+                  'browser_download_url':
+                      'https://github.com/final00000000/Gift_Ledger/releases/download/v1.3.1-beta.2/gift_ledger-beta-android-v1.3.1-beta.2-build1030102.apk',
+                  'digest':
+                      'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+                },
+              ],
+            },
+          ]);
+        }
+
+        throw DioException(
+          requestOptions: RequestOptions(path: url),
+          error: '404',
+        );
+      },
+    );
+
+    final manifest = await repository.fetchManifest();
+
+    expect(manifest.stable.android?.version, '1.3.1');
+    expect(manifest.stable.android?.buildNumber, 1030199);
+    expect(
+      manifest.stable.android?.downloadUrl,
+      'https://github.com/final00000000/Gift_Ledger/releases/download/v1.3.1/gift_ledger-stable-android-v1.3.1-build1030199.apk',
+    );
+    expect(manifest.beta.android?.version, '1.3.1-beta.2');
+    expect(manifest.beta.android?.buildNumber, 1030102);
+    expect(
+      manifest.beta.android?.downloadUrl,
+      'https://github.com/final00000000/Gift_Ledger/releases/download/v1.3.1-beta.2/gift_ledger-beta-android-v1.3.1-beta.2-build1030102.apk',
+    );
+  });
   test('UpdateRepository 会在 API 也不可用时回退 GitHub Release HTML', () async {
     final visitedUrls = <String>[];
     const latestReleaseHtml = '''
