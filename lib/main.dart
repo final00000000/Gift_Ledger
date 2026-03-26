@@ -1,27 +1,28 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:provider/provider.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart'; // 启动页优化
-import 'theme/app_theme.dart';
+import 'package:provider/provider.dart';
+
+import 'models/update_target.dart';
 import 'screens/dashboard_screen.dart';
-import 'screens/statistics_screen.dart';
 import 'screens/settings_screen.dart';
+import 'screens/statistics_screen.dart';
+import 'services/config_service.dart';
+import 'services/db_init_native.dart'
+    if (dart.library.js_interop) 'services/db_init_stub.dart' as db_init;
 import 'services/notification_service.dart';
 import 'services/security_service.dart';
 import 'services/storage_service.dart';
-import 'services/config_service.dart';
-import 'models/update_target.dart';
 import 'services/update/app_build_info_service.dart';
 import 'services/update/update_controller.dart';
 import 'services/update/update_prompt_policy.dart';
 import 'services/update/update_repository.dart';
 import 'services/update/update_ui_coordinator.dart';
+import 'theme/app_theme.dart';
 import 'widgets/update/update_prompt_dialog.dart';
-
-// 条件导入 - 仅桌面端需要初始化
-import 'services/db_init_native.dart'
-    if (dart.library.js_interop) 'services/db_init_stub.dart' as db_init;
 
 void main() async {
   // 1. 提前初始化 Flutter 绑定
@@ -137,6 +138,7 @@ Future<UpdatePromptDialogResult?> _defaultUpdatePromptPresenter(
 ) {
   return showDialog<UpdatePromptDialogResult>(
     context: context,
+    barrierDismissible: false,
     builder: (_) => UpdatePromptDialog(
       target: target,
       onShown: onShown,
@@ -144,7 +146,8 @@ Future<UpdatePromptDialogResult?> _defaultUpdatePromptPresenter(
   );
 }
 
-class _MainNavigationState extends State<MainNavigation> {
+class _MainNavigationState extends State<MainNavigation>
+    with WidgetsBindingObserver {
   int _currentIndex = 0;
   UpdateController? _updateController;
   bool _didScheduleStartupUpdateCheck = false;
@@ -163,6 +166,7 @@ class _MainNavigationState extends State<MainNavigation> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     // 初始化屏幕列表（只创建一次）
     _screens = widget.screens ??
         [
@@ -191,8 +195,24 @@ class _MainNavigationState extends State<MainNavigation> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _updateController?.removeListener(_handleUpdateControllerChanged);
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state != AppLifecycleState.resumed) {
+      return;
+    }
+
+    final controller = _updateController;
+    if (controller == null) {
+      return;
+    }
+
+    unawaited(controller.handleAppResumed());
   }
 
   void _handleUpdateControllerChanged() {
@@ -208,12 +228,11 @@ class _MainNavigationState extends State<MainNavigation> {
       return;
     }
 
-    _presentUpdatePrompt(target: target, dialogKey: dialogKey);
+    _presentUpdatePrompt(target: target);
   }
 
   Future<void> _presentUpdatePrompt({
     required UpdateTarget target,
-    required String dialogKey,
   }) async {
     final controller = _updateController;
     if (controller == null) {
@@ -236,27 +255,9 @@ class _MainNavigationState extends State<MainNavigation> {
       if (result?.ignoreCurrentVersion == true) {
         await controller.ignoreCurrentTarget();
       }
-
-      if (result?.action == UpdatePromptDialogAction.install) {
-        final message = await installCurrentUpdateAndCollectMessage(controller);
-        if (!mounted) {
-          return;
-        }
-        _showInstallFeedback(message);
-      }
     } finally {
       _updatePromptCoordinator.endPresentation();
     }
-  }
-
-  void _showInstallFeedback(String? message) {
-    if (message == null || message.isEmpty) {
-      return;
-    }
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
   }
 
   void _onTabSelected(int index) {
@@ -265,7 +266,9 @@ class _MainNavigationState extends State<MainNavigation> {
     // 不再需要手动刷新，页面会自动响应数据变化
   }
 
-  Widget _buildDynamicDock() {
+  Widget _buildDynamicDock({
+    required bool showSettingsRedDot,
+  }) {
     return Container(
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
@@ -283,15 +286,22 @@ class _MainNavigationState extends State<MainNavigation> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: List.generate(_navItems.length, (index) {
-          return _buildTabItem(index);
+          return _buildTabItem(
+            index,
+            showSettingsRedDot: showSettingsRedDot,
+          );
         }),
       ),
     );
   }
 
-  Widget _buildTabItem(int index) {
+  Widget _buildTabItem(
+    int index, {
+    required bool showSettingsRedDot,
+  }) {
     final isActive = _currentIndex == index;
     final item = _navItems[index];
+    final shouldShowBadge = index == 2 && showSettingsRedDot;
 
     return GestureDetector(
       onTap: () => _onTabSelected(index),
@@ -305,10 +315,35 @@ class _MainNavigationState extends State<MainNavigation> {
           color: isActive ? AppTheme.textPrimary : Colors.transparent,
           borderRadius: BorderRadius.circular(28),
         ),
-        child: Icon(
-          item.icon,
-          color: isActive ? Colors.white : AppTheme.textSecondary,
-          size: 24,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Icon(
+              item.icon,
+              color: isActive ? Colors.white : AppTheme.textSecondary,
+              size: 24,
+            ),
+            if (shouldShowBadge)
+              Positioned(
+                right: -1,
+                top: -2,
+                child: Container(
+                  key: const ValueKey('settings-tab-red-dot'),
+                  width: 10,
+                  height: 10,
+                  decoration: BoxDecoration(
+                    color: Colors.redAccent,
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: isActive
+                          ? AppTheme.textPrimary
+                          : Colors.white.withValues(alpha: 0.96),
+                      width: 1.8,
+                    ),
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );
@@ -317,6 +352,10 @@ class _MainNavigationState extends State<MainNavigation> {
   @override
   Widget build(BuildContext context) {
     const dockBottomPadding = 12.0;
+    final showSettingsRedDot = context.select<UpdateController, bool>(
+      (controller) => controller.state.showRedDot,
+    );
+
     return Scaffold(
       // extendBody 移除，避免与子页面 Scaffold 冲突导致内容不可见
       backgroundColor: AppTheme.backgroundColor,
@@ -336,7 +375,9 @@ class _MainNavigationState extends State<MainNavigation> {
               minimum: const EdgeInsets.only(bottom: dockBottomPadding),
               child: Center(
                 child: RepaintBoundary(
-                  child: _buildDynamicDock(),
+                  child: _buildDynamicDock(
+                    showSettingsRedDot: showSettingsRedDot,
+                  ),
                 ),
               ),
             ),

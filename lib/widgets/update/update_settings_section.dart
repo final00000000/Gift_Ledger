@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/update_target.dart';
 import '../../services/update/update_controller.dart';
+import '../../services/update/update_installer.dart';
 import '../../services/update/update_prompt_policy.dart';
 import '../../theme/app_theme.dart';
 
@@ -14,6 +15,9 @@ class UpdateSettingsSection extends StatelessWidget {
     required this.target,
     required this.onCheckPressed,
     required this.onInstallPressed,
+    this.error,
+    this.installResult,
+    this.downloadProgress,
   });
 
   final String currentVersion;
@@ -22,10 +26,19 @@ class UpdateSettingsSection extends StatelessWidget {
   final UpdateTarget? target;
   final VoidCallback onCheckPressed;
   final VoidCallback onInstallPressed;
+  final Object? error;
+  final InstallResult? installResult;
+  final DownloadProgress? downloadProgress;
 
   bool get _isChecking => status == UpdateStateStatus.checking;
+  bool get _isPermissionRequired =>
+      status == UpdateStateStatus.permissionRequired;
+  bool get _isDownloading => status == UpdateStateStatus.downloading;
   bool get _isInstalling => status == UpdateStateStatus.installing;
-  bool get _isBusy => _isChecking || _isInstalling;
+  bool get _isCheckBusy =>
+      _isChecking || _isPermissionRequired || _isDownloading || _isInstalling;
+  bool get _isInstallBusy => _isDownloading || _isInstalling;
+  bool get _hasInstallActionError => error is UpdateInstallerException;
 
   String get _currentVersionLabel {
     return currentVersion.trim().isEmpty ? '当前版本未知' : '当前版本 v$currentVersion';
@@ -35,8 +48,13 @@ class UpdateSettingsSection extends StatelessWidget {
     switch (status) {
       case UpdateStateStatus.checking:
         return '正在检查更新...';
+      case UpdateStateStatus.permissionRequired:
+        return '需要先开启安装权限';
+      case UpdateStateStatus.downloading:
+        final percent = _downloadPercentLabel;
+        return percent == null ? '正在下载更新...' : '正在下载更新 $percent';
       case UpdateStateStatus.installing:
-        return '正在准备安装更新...';
+        return '正在打开系统安装器';
       case UpdateStateStatus.upToDate:
         return '当前已是最新版本';
       case UpdateStateStatus.available:
@@ -46,6 +64,9 @@ class UpdateSettingsSection extends StatelessWidget {
         }
         return '可更新到 v$version';
       case UpdateStateStatus.error:
+        if (_hasInstallActionError) {
+          return '本次更新未完成';
+        }
         if (lastSource == UpdateCheckSource.manual) {
           return '当前网络不可用，或暂时无法访问更新服务';
         }
@@ -55,12 +76,23 @@ class UpdateSettingsSection extends StatelessWidget {
     }
   }
 
+  String? get _downloadPercentLabel {
+    final fraction = downloadProgress?.fraction;
+    if (fraction == null) {
+      return null;
+    }
+    final percent = (fraction * 100).clamp(0, 100).round();
+    return '$percent%';
+  }
+
   String get _checkButtonLabel {
     switch (status) {
       case UpdateStateStatus.checking:
         return '检查中...';
-      case UpdateStateStatus.available:
+      case UpdateStateStatus.permissionRequired:
+      case UpdateStateStatus.downloading:
       case UpdateStateStatus.installing:
+      case UpdateStateStatus.available:
       case UpdateStateStatus.upToDate:
         return '重新检查';
       case UpdateStateStatus.error:
@@ -70,16 +102,158 @@ class UpdateSettingsSection extends StatelessWidget {
     }
   }
 
+  String get _installButtonLabel {
+    switch (status) {
+      case UpdateStateStatus.permissionRequired:
+        return '去开启权限';
+      case UpdateStateStatus.downloading:
+        return _downloadPercentLabel == null
+            ? '下载中...'
+            : '下载中 ${_downloadPercentLabel!}';
+      case UpdateStateStatus.installing:
+        return '安装中...';
+      case UpdateStateStatus.error:
+        return _hasInstallActionError ? '重新下载' : '立即更新';
+      case UpdateStateStatus.available:
+      case UpdateStateStatus.idle:
+      case UpdateStateStatus.checking:
+      case UpdateStateStatus.upToDate:
+        return '立即更新';
+    }
+  }
+
   bool get _showInstallButton {
-    return target != null && status != UpdateStateStatus.error;
+    if (target == null) {
+      return false;
+    }
+
+    if (status == UpdateStateStatus.error && !_hasInstallActionError) {
+      return false;
+    }
+
+    return true;
   }
 
   bool get _isTargetBetaRelease {
     return target?.effectiveResolvedTargetChannel == UpdateChannel.beta;
   }
 
+  String _formatBytes(int bytes) {
+    if (bytes <= 0) {
+      return '0 B';
+    }
+
+    const units = <String>['B', 'KB', 'MB', 'GB'];
+    var value = bytes.toDouble();
+    var unitIndex = 0;
+    while (value >= 1024 && unitIndex < units.length - 1) {
+      value /= 1024;
+      unitIndex += 1;
+    }
+
+    final digits = unitIndex == 0 ? 0 : 1;
+    return '${value.toStringAsFixed(digits)} ${units[unitIndex]}';
+  }
+
+  String? _resolveInstallerError() {
+    if (error is UpdateInstallerException) {
+      return (error as UpdateInstallerException).message;
+    }
+    return null;
+  }
+
+  Widget? _buildStatusBody() {
+    final installerError = _resolveInstallerError();
+
+    if (_isPermissionRequired) {
+      return _buildInfoBanner(
+        icon: Icons.verified_user_outlined,
+        color: AppTheme.primaryColor,
+        message: installerError ?? '请先允许“随礼记”安装应用，返回后会自动继续更新。',
+      );
+    }
+
+    if (_isDownloading) {
+      final progressText = downloadProgress == null
+          ? '正在准备下载，请保持网络畅通'
+          : downloadProgress!.hasTotalBytes
+              ? '${_formatBytes(downloadProgress!.receivedBytes)} / ${_formatBytes(downloadProgress!.totalBytes)}'
+              : '已下载 ${_formatBytes(downloadProgress!.receivedBytes)}';
+      return Column(
+        children: [
+          _buildInfoBanner(
+            icon: Icons.downloading_rounded,
+            color: AppTheme.primaryColor,
+            message: progressText,
+          ),
+          const SizedBox(height: 10),
+          LinearProgressIndicator(
+            value: downloadProgress?.fraction,
+            minHeight: 8,
+            borderRadius: BorderRadius.circular(999),
+            backgroundColor: AppTheme.primaryColor.withValues(alpha: 0.12),
+            valueColor:
+                const AlwaysStoppedAnimation<Color>(AppTheme.primaryColor),
+          ),
+        ],
+      );
+    }
+
+    if (_isInstalling) {
+      return _buildInfoBanner(
+        icon: Icons.install_mobile_rounded,
+        color: AppTheme.primaryColor,
+        message: installResult?.message ?? '安装器已启动，请按系统提示完成更新。',
+      );
+    }
+
+    if (installerError != null && installerError.isNotEmpty) {
+      return _buildInfoBanner(
+        icon: Icons.error_outline_rounded,
+        color: const Color(0xFFDC2626),
+        message: installerError,
+      );
+    }
+
+    return null;
+  }
+
+  Widget _buildInfoBanner({
+    required IconData icon,
+    required Color color,
+    required String message,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: color, size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: const TextStyle(
+                fontSize: 12,
+                color: AppTheme.textSecondary,
+                height: 1.5,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final statusBody = _buildStatusBody();
+
     return Container(
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
@@ -132,7 +306,7 @@ class UpdateSettingsSection extends StatelessWidget {
             contentPadding: const EdgeInsets.symmetric(horizontal: 12),
             visualDensity: VisualDensity.compact,
           ),
-          if (target != null && status != UpdateStateStatus.error) ...[
+          if (target != null) ...[
             const Divider(height: 1, indent: 52),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
@@ -180,15 +354,9 @@ class UpdateSettingsSection extends StatelessWidget {
                           ),
                       ],
                     ),
-                    if (target!.buildNumber != null) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        '构建号 ${target!.buildNumber}',
-                        style: const TextStyle(
-                          color: AppTheme.textSecondary,
-                          fontSize: 12,
-                        ),
-                      ),
+                    if (statusBody != null) ...[
+                      const SizedBox(height: 12),
+                      statusBody,
                     ],
                   ],
                 ),
@@ -202,7 +370,7 @@ class UpdateSettingsSection extends StatelessWidget {
               runSpacing: 12,
               children: [
                 OutlinedButton.icon(
-                  onPressed: _isBusy ? null : onCheckPressed,
+                  onPressed: _isCheckBusy ? null : onCheckPressed,
                   icon: _isChecking
                       ? const SizedBox(
                           width: 16,
@@ -214,8 +382,8 @@ class UpdateSettingsSection extends StatelessWidget {
                 ),
                 if (_showInstallButton)
                   FilledButton(
-                    onPressed: _isBusy ? null : onInstallPressed,
-                    child: Text(_isInstalling ? '更新中...' : '立即更新'),
+                    onPressed: _isInstallBusy ? null : onInstallPressed,
+                    child: Text(_installButtonLabel),
                   ),
               ],
             ),

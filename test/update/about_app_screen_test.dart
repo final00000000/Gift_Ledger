@@ -126,7 +126,7 @@ void main() {
       _buttonFinderByLabel('重新检查'),
     );
     final installButton = tester.widget<ButtonStyleButton>(
-      _buttonFinderByLabel('更新中...'),
+      _buttonFinderByLabel('安装中...'),
     );
     final betaSwitch = tester.widget<Switch>(find.byType(Switch));
 

@@ -29,13 +29,12 @@ class UpdatePromptPolicy {
   }) {
     final targetKey = buildUpdateTargetKey(target);
     final isIgnored = ignoredTargetKeys.contains(targetKey);
-    final hasPrompted = promptedTargetKeys.contains(targetKey);
 
-    if (isIgnored || hasPrompted) {
+    if (isIgnored) {
       return const UpdatePromptDecision(
         showDialog: false,
         showRedDot: true,
-        showBanner: true,
+        showBanner: false,
       );
     }
 
@@ -50,7 +49,7 @@ class UpdatePromptPolicy {
     return const UpdatePromptDecision(
       showDialog: false,
       showRedDot: true,
-      showBanner: true,
+      showBanner: false,
     );
   }
 }

@@ -9,12 +9,14 @@ class AboutAppEntryTile extends StatelessWidget {
     required this.showRedDot,
     required this.showUpdateChip,
     required this.onTap,
+    this.updateChipText = '发现新版本',
   });
 
   final String currentVersion;
   final bool showRedDot;
   final bool showUpdateChip;
   final VoidCallback onTap;
+  final String updateChipText;
 
   String get _versionLabel {
     return currentVersion.trim().isEmpty ? '当前版本未知' : '当前版本 v$currentVersion';
@@ -81,9 +83,9 @@ class AboutAppEntryTile extends StatelessWidget {
                   color: AppTheme.primaryColor.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(999),
                 ),
-                child: const Text(
-                  '发现新版本',
-                  style: TextStyle(
+                child: Text(
+                  updateChipText,
+                  style: const TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
                     color: AppTheme.primaryColor,
