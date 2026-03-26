@@ -1,17 +1,19 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-03-25T23:34:00Z",
+  "generatedAt": "2026-03-26T04:40:00Z",
   "channels": {
     "stable": {
       "android": {
         "version": "1.3.1",
         "buildNumber": 4312,
         "packageType": "apk",
-        "downloadUrl": "https://cdn.jsdelivr.net/gh/final00000000/Gift_Ledger@beat%2Fupdate-flow/releases/android/v1.3.1/gift_ledger_v1.3.1_armeabi-v7a_build3312.apk",
+        "downloadUrl": "https://cdn.jsdelivr.net/gh/final00000000/Gift_Ledger@beat%2Fupdate-flow/releases/android/v1.3.1/gift_ledger_v1.3.1_armeabi-v7a_build4312.apk",
         "sha256": "9f1aa0f3580fe84dc56688cdc1349790893b7e32af3b3affd26da702e5b9211e",
-        "notes": "应用内更新分支闭环测试包（stable, armeabi-v7a, build 4312）"
+        "notes": "应用内更新分支闭环测试包（稳定通道，包含更新链路修复与界面优化）"
       }
     },
     "beta": {}
   }
 }
+
+
