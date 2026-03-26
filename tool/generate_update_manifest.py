@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -99,16 +100,49 @@ def _validate_entry(entry: dict[str, Any], index: int) -> dict[str, Any]:
     if "://" not in download_url:
         raise ManifestGenerationError(f'"{path}.downloadUrl" 必须是绝对 URL。')
 
+    version = _require_non_empty_string(entry["version"], f"{path}.version")
+    build_number = _require_int(entry["buildNumber"], f"{path}.buildNumber")
+    _validate_download_url_metadata(
+        version=version,
+        build_number=build_number,
+        download_url=download_url,
+        path=path,
+    )
+
     return {
         "channel": channel,
         "platform": platform,
-        "version": _require_non_empty_string(entry["version"], f"{path}.version"),
-        "buildNumber": _require_int(entry["buildNumber"], f"{path}.buildNumber"),
+        "version": version,
+        "buildNumber": build_number,
         "packageType": package_type,
         "downloadUrl": download_url,
         "sha256": sha256,
         "notes": _require_non_empty_string(entry["notes"], f"{path}.notes"),
     }
+
+
+def _validate_download_url_metadata(
+    *,
+    version: str,
+    build_number: int,
+    download_url: str,
+    path: str,
+) -> None:
+    version_match = re.search(
+        r"v(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)",
+        download_url,
+        re.IGNORECASE,
+    )
+    if version_match and version_match.group(1) != version:
+        raise ManifestGenerationError(
+            f'"{path}.downloadUrl" 中的版本号与 "{path}.version" 不一致。'
+        )
+
+    build_match = re.search(r"build[_-]?(\d+)", download_url, re.IGNORECASE)
+    if build_match and int(build_match.group(1)) != build_number:
+        raise ManifestGenerationError(
+            f'"{path}.downloadUrl" 中的 build 号与 "{path}.buildNumber" 不一致。'
+        )
 
 
 def build_manifest(input_data: dict[str, Any]) -> dict[str, Any]:

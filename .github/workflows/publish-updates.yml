@@ -60,6 +60,7 @@ jobs:
           INPUT_CHANNEL: ${{ github.event.inputs.channel }}
           INPUT_RELEASE_TAG: ${{ github.event.inputs.release_tag }}
           REF_NAME: ${{ github.ref_name }}
+          GITHUB_RUN_NUMBER: ${{ github.run_number }}
         run: |
           python - <<'PY'
           import os
@@ -74,24 +75,44 @@ jobs:
 
           app_name = name_match.group(1).strip()
           full_version = version_match.group(1).strip()
-          semver, _, build_number = full_version.partition("+")
+          pubspec_semver, _, pubspec_build_number = full_version.partition("+")
           event_name = os.environ.get("EVENT_NAME", "").strip()
           input_channel = os.environ.get("INPUT_CHANNEL", "").strip().lower()
+          input_release_tag = os.environ.get("INPUT_RELEASE_TAG", "").strip()
           ref_name = os.environ.get("REF_NAME", "").strip()
+          github_run_number = os.environ.get("GITHUB_RUN_NUMBER", "").strip()
+
+          semver_pattern = re.compile(r"^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$")
+          semver = pubspec_semver
+          release_tag = input_release_tag
+
+          if release_tag:
+              if not release_tag.startswith("v"):
+                  release_tag = f"v{release_tag}"
+              semver = release_tag[1:]
+              if not semver_pattern.fullmatch(semver):
+                  raise SystemExit(f"Invalid release tag: {release_tag}")
+          elif event_name == "push" and ref_name:
+              release_tag = ref_name if ref_name.startswith("v") else f"v{ref_name}"
+              semver = release_tag[1:]
+              if not semver_pattern.fullmatch(semver):
+                  raise SystemExit(f"Invalid git tag: {release_tag}")
 
           if event_name == "push" and ref_name.startswith("v"):
               channel = "beta" if "beta" in ref_name.lower() else "stable"
+          elif release_tag:
+              channel = "beta" if "beta" in release_tag.lower() else (input_channel or "stable")
           else:
-              channel = input_channel or "stable"
+              channel = input_channel or ("beta" if "beta" in semver.lower() else "stable")
 
-          release_tag = os.environ.get("INPUT_RELEASE_TAG", "").strip()
           if not release_tag:
-              if event_name == "push" and ref_name:
-                  release_tag = ref_name
-              else:
-                  release_tag = f"v{semver}"
-                  if channel == "beta" and "beta" not in release_tag.lower():
-                      release_tag = f"{release_tag}-beta"
+              release_tag = f"v{semver}"
+              if channel == "beta" and "beta" not in release_tag.lower():
+                  release_tag = f"{release_tag}-beta"
+
+          build_number = github_run_number or pubspec_build_number or "0"
+          if not build_number.isdigit():
+              raise SystemExit(f"Invalid build number: {build_number}")
 
           asset_name = f"{app_name}-{channel}-android-v{semver}-build{build_number}.apk"
 
@@ -99,7 +120,7 @@ jobs:
           values = {
               "app_name": app_name,
               "semver": semver,
-              "build_number": build_number or "0",
+              "build_number": build_number,
               "channel": channel,
               "release_tag": release_tag,
               "asset_name": asset_name,
@@ -113,7 +134,10 @@ jobs:
         run: flutter pub get
 
       - name: Build Android APK
-        run: flutter build apk --release
+        run: >
+          flutter build apk --release
+          --build-name "${{ steps.meta.outputs.semver }}"
+          --build-number "${{ steps.meta.outputs.build_number }}"
 
       - name: Prepare Android asset
         id: asset
@@ -228,7 +252,6 @@ jobs:
         with:
           channel: stable
           cache: true
-
       - name: Resolve release metadata
         id: meta
         shell: pwsh
@@ -237,6 +260,7 @@ jobs:
           INPUT_CHANNEL: ${{ github.event.inputs.channel }}
           INPUT_RELEASE_TAG: ${{ github.event.inputs.release_tag }}
           REF_NAME: ${{ github.ref_name }}
+          GITHUB_RUN_NUMBER: ${{ github.run_number }}
         run: |
           $text = Get-Content "pubspec.yaml" -Raw
           $nameMatch = [regex]::Match($text, '^name:\s*([^\s]+)', 'Multiline')
@@ -248,26 +272,59 @@ jobs:
           $appName = $nameMatch.Groups[1].Value.Trim()
           $fullVersion = $versionMatch.Groups[1].Value.Trim()
           $parts = $fullVersion.Split('+', 2)
-          $semver = $parts[0]
-          $buildNumber = if ($parts.Length -gt 1 -and $parts[1]) { $parts[1] } else { '0' }
+          $pubspecSemver = $parts[0]
+          $pubspecBuildNumber = if ($parts.Length -gt 1 -and $parts[1]) { $parts[1] } else { '0' }
+          $semver = $pubspecSemver
           $channel = $env:INPUT_CHANNEL.Trim().ToLower()
-          if ($env:EVENT_NAME -eq 'push' -and $env:REF_NAME.StartsWith('v')) {
-            $channel = if ($env:REF_NAME.ToLower().Contains('beta')) { 'beta' } else { 'stable' }
-          }
-          if ([string]::IsNullOrWhiteSpace($channel)) {
-            $channel = 'stable'
+          $refName = $env:REF_NAME.Trim()
+          $releaseTag = $env:INPUT_RELEASE_TAG.Trim()
+          $semverPattern = '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$'
+
+          if (-not [string]::IsNullOrWhiteSpace($releaseTag)) {
+            if (-not $releaseTag.StartsWith('v')) {
+              $releaseTag = "v$releaseTag"
+            }
+            $semver = $releaseTag.Substring(1)
+            if (-not ($semver -match $semverPattern)) {
+              throw "Invalid release tag: $releaseTag"
+            }
+          } elseif ($env:EVENT_NAME -eq 'push' -and -not [string]::IsNullOrWhiteSpace($refName)) {
+            $releaseTag = if ($refName.StartsWith('v')) { $refName } else { "v$refName" }
+            $semver = $releaseTag.Substring(1)
+            if (-not ($semver -match $semverPattern)) {
+              throw "Invalid git tag: $releaseTag"
+            }
           }
 
-          $releaseTag = $env:INPUT_RELEASE_TAG.Trim()
-          if ([string]::IsNullOrWhiteSpace($releaseTag)) {
-            if ($env:EVENT_NAME -eq 'push' -and -not [string]::IsNullOrWhiteSpace($env:REF_NAME)) {
-              $releaseTag = $env:REF_NAME
-            } else {
-              $releaseTag = "v$semver"
-              if ($channel -eq 'beta' -and -not $releaseTag.ToLower().Contains('beta')) {
-                $releaseTag = "$releaseTag-beta"
-              }
+          if ($env:EVENT_NAME -eq 'push' -and $env:REF_NAME.StartsWith('v')) {
+            $channel = if ($env:REF_NAME.ToLower().Contains('beta')) { 'beta' } else { 'stable' }
+          } elseif (-not [string]::IsNullOrWhiteSpace($releaseTag)) {
+            if ($releaseTag.ToLower().Contains('beta')) {
+              $channel = 'beta'
+            } elseif ([string]::IsNullOrWhiteSpace($channel)) {
+              $channel = 'stable'
             }
+          }
+          if ([string]::IsNullOrWhiteSpace($channel)) {
+            $channel = if ($semver.ToLower().Contains('beta')) { 'beta' } else { 'stable' }
+          }
+
+          if ([string]::IsNullOrWhiteSpace($releaseTag)) {
+            $releaseTag = "v$semver"
+            if ($channel -eq 'beta' -and -not $releaseTag.ToLower().Contains('beta')) {
+              $releaseTag = "$releaseTag-beta"
+            }
+          }
+
+          $buildNumber = if (-not [string]::IsNullOrWhiteSpace($env:GITHUB_RUN_NUMBER)) {
+            $env:GITHUB_RUN_NUMBER.Trim()
+          } elseif (-not [string]::IsNullOrWhiteSpace($pubspecBuildNumber)) {
+            $pubspecBuildNumber
+          } else {
+            '0'
+          }
+          if (-not ($buildNumber -match '^\d+$')) {
+            throw "Invalid build number: $buildNumber"
           }
 
           $assetBaseName = "$appName-$channel-windows-v$semver-build$buildNumber-setup"
@@ -285,7 +342,10 @@ jobs:
         run: flutter pub get
 
       - name: Build Windows release
-        run: flutter build windows --release
+        run: >
+          flutter build windows --release
+          --build-name "${{ steps.meta.outputs.semver }}"
+          --build-number "${{ steps.meta.outputs.build_number }}"
 
       - name: Install Inno Setup
         run: choco install innosetup --no-progress -y

@@ -41,17 +41,17 @@ List<Map<String, dynamic>> _buildReleasesJson({
       'body': '稳定版发布说明',
       'assets': [
         {
-          'name': 'gift_ledger_v${stableVersion}_armeabi.apk',
+          'name': 'gift_ledger_v${stableVersion}_armeabi_build1200.apk',
           'browser_download_url':
-              'https://github.com/final00000000/Gift_Ledger/releases/download/v$stableVersion/gift_ledger_v${stableVersion}_armeabi.apk',
+              'https://github.com/final00000000/Gift_Ledger/releases/download/v$stableVersion/gift_ledger_v${stableVersion}_armeabi_build1200.apk',
           'digest':
               'sha256:1111111111111111111111111111111111111111111111111111111111111111',
           'size': 20300781,
         },
         {
-          'name': 'gift_ledger_v${stableVersion}_arm64.apk',
+          'name': 'gift_ledger_v${stableVersion}_arm64_build1300.apk',
           'browser_download_url':
-              'https://github.com/final00000000/Gift_Ledger/releases/download/v$stableVersion/gift_ledger_v${stableVersion}_arm64.apk',
+              'https://github.com/final00000000/Gift_Ledger/releases/download/v$stableVersion/gift_ledger_v${stableVersion}_arm64_build1300.apk',
           'digest':
               'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
           'size': 26780586,
@@ -65,9 +65,9 @@ List<Map<String, dynamic>> _buildReleasesJson({
       'body': 'Beta 发布说明',
       'assets': [
         {
-          'name': 'gift_ledger_v1.2.9_beta_arm64.apk',
+          'name': 'gift_ledger_v1.2.9_beta_arm64_build1312.apk',
           'browser_download_url':
-              'https://github.com/final00000000/Gift_Ledger/releases/download/v$betaVersion/gift_ledger_v1.2.9_beta_arm64.apk',
+              'https://github.com/final00000000/Gift_Ledger/releases/download/v$betaVersion/gift_ledger_v1.2.9_beta_arm64_build1312.apk',
           'digest':
               'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
         },
@@ -125,7 +125,7 @@ void main() {
             error: 'blocked',
           );
         }
-        if (url == UpdateRepository.jsDelivrManifestUrl) {
+        if (url == UpdateRepository.rawManifestUrl) {
           return rawManifest;
         }
         throw StateError('should not reach raw fallback');
@@ -139,12 +139,12 @@ void main() {
       visitedUrls,
       <String>[
         UpdateRepository.githubContentsApiUrl,
-        UpdateRepository.jsDelivrManifestUrl,
+        UpdateRepository.rawManifestUrl,
       ],
     );
   });
 
-  test('UpdateRepository 会优先选择体积更小的 arm64 APK 资产', () async {
+  test('UpdateRepository 会过滤可疑测试 APK，并优先选择正式的 arm64 更新包', () async {
     final repository = UpdateRepository(
       configService: configService,
       fetcher: (url, options) async {
@@ -157,17 +157,25 @@ void main() {
               'body': '体积优化测试',
               'assets': [
                 {
-                  'name': 'gift_ledger_v1.3.1_arm64_big.apk',
+                  'name': 'gift_ledger-stable-android-v1.2.8-build8.apk',
                   'browser_download_url':
-                      'https://github.com/final00000000/Gift_Ledger/releases/download/v1.3.1/gift_ledger_v1.3.1_arm64_big.apk',
+                      'https://github.com/final00000000/Gift_Ledger/releases/download/v1.3.1/gift_ledger-stable-android-v1.2.8-build8.apk',
+                  'digest':
+                      'sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd',
+                  'size': 66005243,
+                },
+                {
+                  'name': 'gift_ledger_v1.3.1_arm64_big_build1309.apk',
+                  'browser_download_url':
+                      'https://github.com/final00000000/Gift_Ledger/releases/download/v1.3.1/gift_ledger_v1.3.1_arm64_big_build1309.apk',
                   'digest':
                       'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
                   'size': 26780586,
                 },
                 {
-                  'name': 'gift_ledger_v1.3.1_arm64_fasttest.apk',
+                  'name': 'gift_ledger_v1.3.1_arm64_fasttest_build1310.apk',
                   'browser_download_url':
-                      'https://github.com/final00000000/Gift_Ledger/releases/download/v1.3.1/gift_ledger_v1.3.1_arm64_fasttest.apk',
+                      'https://github.com/final00000000/Gift_Ledger/releases/download/v1.3.1/gift_ledger_v1.3.1_arm64_fasttest_build1310.apk',
                   'digest':
                       'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
                   'size': 11731255,
@@ -187,9 +195,10 @@ void main() {
     final manifest = await repository.fetchManifest();
 
     expect(manifest.stable.android?.downloadUrl,
-        'https://github.com/final00000000/Gift_Ledger/releases/download/v1.3.1/gift_ledger_v1.3.1_arm64_fasttest.apk');
+        'https://github.com/final00000000/Gift_Ledger/releases/download/v1.3.1/gift_ledger_v1.3.1_arm64_big_build1309.apk');
     expect(manifest.stable.android?.sha256,
-        'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb');
+        'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
+    expect(manifest.stable.android?.buildNumber, 1309);
   });
 
   test('UpdateRepository 会在 manifest 全部失败后回退 GitHub Releases API', () async {
@@ -217,16 +226,16 @@ void main() {
       visitedUrls,
       <String>[
         UpdateRepository.githubContentsApiUrl,
-        UpdateRepository.jsDelivrManifestUrl,
         UpdateRepository.rawManifestUrl,
+        UpdateRepository.jsDelivrManifestUrl,
         UpdateRepository.githubReleasesApiUrl,
       ],
     );
     expect(manifest.stable.android?.version, '1.2.8');
-    expect(manifest.stable.android?.buildNumber, 0);
+    expect(manifest.stable.android?.buildNumber, 1300);
     expect(
       manifest.stable.android?.downloadUrl,
-      'https://github.com/final00000000/Gift_Ledger/releases/download/v1.2.8/gift_ledger_v1.2.8_arm64.apk',
+      'https://github.com/final00000000/Gift_Ledger/releases/download/v1.2.8/gift_ledger_v1.2.8_arm64_build1300.apk',
     );
     expect(
       manifest.stable.android?.sha256,
@@ -234,6 +243,7 @@ void main() {
     );
     expect(manifest.stable.android?.notes, '稳定版发布说明');
     expect(manifest.beta.android?.version, '1.2.9-beta.1');
+    expect(manifest.beta.android?.buildNumber, 1312);
   });
   test('UpdateRepository 会在 API 也不可用时回退 GitHub Release HTML', () async {
     final visitedUrls = <String>[];
@@ -257,8 +267,8 @@ void main() {
 <div class="Box Box--condensed tmp-mt-3">
   <ul>
     <li class="Box-row d-flex flex-column flex-md-row">
-      <a href="/final00000000/Gift_Ledger/releases/download/v1.2.8/gift_ledger_v1.2.8_arm64.apk" class="Truncate">
-        <span class="Truncate-text text-bold">gift_ledger_v1.2.8_arm64.apk</span>
+      <a href="/final00000000/Gift_Ledger/releases/download/v1.2.8/gift_ledger_v1.2.8_arm64_build1300.apk" class="Truncate">
+        <span class="Truncate-text text-bold">gift_ledger_v1.2.8_arm64_build1300.apk</span>
       </a>
       <span class="Truncate-text">sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc</span>
     </li>
@@ -290,18 +300,18 @@ void main() {
       visitedUrls,
       <String>[
         UpdateRepository.githubContentsApiUrl,
-        UpdateRepository.jsDelivrManifestUrl,
         UpdateRepository.rawManifestUrl,
+        UpdateRepository.jsDelivrManifestUrl,
         UpdateRepository.githubReleasesApiUrl,
         UpdateRepository.githubLatestReleasePageUrl,
         '${UpdateRepository.githubExpandedAssetsUrlPrefix}v1.2.8',
       ],
     );
     expect(manifest.stable.android?.version, '1.2.8');
-    expect(manifest.stable.android?.buildNumber, 0);
+    expect(manifest.stable.android?.buildNumber, 1300);
     expect(
       manifest.stable.android?.downloadUrl,
-      'https://github.com/final00000000/Gift_Ledger/releases/download/v1.2.8/gift_ledger_v1.2.8_arm64.apk',
+      'https://github.com/final00000000/Gift_Ledger/releases/download/v1.2.8/gift_ledger_v1.2.8_arm64_build1300.apk',
     );
     expect(
       manifest.stable.android?.sha256,
