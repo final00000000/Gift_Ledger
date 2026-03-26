@@ -145,13 +145,7 @@ class MainActivity: FlutterActivity() {
             return
         }
 
-        val preferredPackage = resolvedActivities
-            .mapNotNull { it.activityInfo?.packageName }
-            .firstOrNull {
-                it.contains("packageinstaller") ||
-                    it.contains("permissioncontroller") ||
-                    it.contains("appmarket")
-            }
+        val preferredPackage = resolvePreferredInstallerPackage(resolvedActivities)
         if (!preferredPackage.isNullOrBlank()) {
             installIntent.setPackage(preferredPackage)
         }
@@ -167,6 +161,23 @@ class MainActivity: FlutterActivity() {
     private fun requiresInstallPermission(): Boolean {
         return Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
             !packageManager.canRequestPackageInstalls()
+    }
+
+    private fun resolvePreferredInstallerPackage(
+        resolvedActivities: List<android.content.pm.ResolveInfo>,
+    ): String? {
+        val packageNames = resolvedActivities
+            .mapNotNull { it.activityInfo?.packageName }
+            .distinct()
+
+        fun pickByKeyword(keyword: String): String? {
+            return packageNames.firstOrNull { packageName ->
+                packageName.contains(keyword, ignoreCase = true)
+            }
+        }
+
+        return pickByKeyword("packageinstaller")
+            ?: pickByKeyword("appmarket")
     }
 
     private fun clearPendingInstall() {
