@@ -243,7 +243,14 @@ jobs:
             "/DOutputBaseName=$env:OUTPUT_BASE_NAME" `
             "windows/installer/GiftLedger.iss"
 
+          if ($LASTEXITCODE -ne 0) {
+            throw "Inno Setup 编译失败，退出码：$LASTEXITCODE"
+          }
+
           $assetPath = Join-Path $outputDir "$env:OUTPUT_BASE_NAME.exe"
+          if (-not (Test-Path $assetPath)) {
+            throw "未生成 Windows 安装器：$assetPath"
+          }
           $hash = (Get-FileHash -Path $assetPath -Algorithm SHA256).Hash.ToLowerInvariant()
 
           Add-Content -Path $env:GITHUB_OUTPUT -Value "asset_path=$assetPath"
