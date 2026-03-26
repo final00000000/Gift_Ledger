@@ -305,15 +305,24 @@ sudo gem install cocoapods
 
 ## 📝 版本号管理
 
-版本号在 `pubspec.yaml` 中定义：
+版本号在 `pubspec.yaml` 中定义，例如：
 
 ```yaml
-version: 1.2.5+5
+version: 1.3.2+1030299
 ```
 
-格式：`主版本.次版本.修订号+构建号`
+当前项目的版本号与发布填写规则已单独整理为：
 
-修改版本号后，重新构建即可应用新版本。
+```text
+docs/RELEASE_VERSION_RULES.md
+```
+
+重点约定：
+
+- `pubspec.yaml` 保存当前 stable 版本
+- Android `versionCode` 不再跟 GitHub Actions run number 绑定
+- beta 发布时必须填写完整 `release_tag`，例如 `v1.3.2-beta.2`
+- stable / beta 的 build number 都由统一脚本生成并校验
 
 ---
 
@@ -329,3 +338,5 @@ version: 1.2.5+5
 ## 📄 许可证
 
 本项目采用 MIT 许可证。详见 [LICENSE](LICENSE) 文件。
+
+
