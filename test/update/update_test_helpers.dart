@@ -59,7 +59,7 @@ class FakeUpdateController extends UpdateController {
     UpdatePlatform platform = UpdatePlatform.android,
     bool showRedDot = true,
     bool showDialog = false,
-    bool showBanner = true,
+    bool showBanner = false,
     UpdateCheckSource lastSource = UpdateCheckSource.manual,
   }) {
     return FakeUpdateController(
@@ -93,7 +93,7 @@ class FakeUpdateController extends UpdateController {
       selectedChannel: selectedChannel,
       showRedDot: true,
       showDialog: false,
-      showBanner: true,
+      showBanner: false,
       lastSource: UpdateCheckSource.startup,
     );
   }

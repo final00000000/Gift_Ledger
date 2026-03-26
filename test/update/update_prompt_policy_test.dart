@@ -30,7 +30,7 @@ void main() {
   group('UpdatePromptPolicy', () {
     const policy = UpdatePromptPolicy();
 
-    test('忽略当前目标后，不再弹窗但继续显示红点与 banner', () {
+    test('忽略当前目标后，不再弹窗但继续显示红点且不再展示 banner', () {
       final decision = policy.decide(
         source: UpdateCheckSource.startup,
         target: _stableFallbackTarget,
@@ -40,7 +40,7 @@ void main() {
 
       expect(decision.showDialog, isFalse);
       expect(decision.showRedDot, isTrue);
-      expect(decision.showBanner, isTrue);
+      expect(decision.showBanner, isFalse);
     });
 
     test('启动检查且首次发现时强弹', () {
@@ -56,7 +56,7 @@ void main() {
       expect(decision.showBanner, isFalse);
     });
 
-    test('已提示过则不再强弹', () {
+    test('已提示过但未勾选不再提示时，启动仍会强弹', () {
       final decision = policy.decide(
         source: UpdateCheckSource.startup,
         target: _betaTarget,
@@ -64,9 +64,9 @@ void main() {
         promptedTargetKeys: {'beta@windows@1.3.2-beta.1@16'},
       );
 
-      expect(decision.showDialog, isFalse);
+      expect(decision.showDialog, isTrue);
       expect(decision.showRedDot, isTrue);
-      expect(decision.showBanner, isTrue);
+      expect(decision.showBanner, isFalse);
     });
 
     test('手动检查不会被判成首次启动强弹逻辑', () {
@@ -79,7 +79,7 @@ void main() {
 
       expect(decision.showDialog, isFalse);
       expect(decision.showRedDot, isTrue);
-      expect(decision.showBanner, isTrue);
+      expect(decision.showBanner, isFalse);
     });
   });
 }

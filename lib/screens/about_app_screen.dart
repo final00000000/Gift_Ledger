@@ -101,6 +101,8 @@ class _AboutAppScreenState extends State<AboutAppScreen> {
     final updateState = updateController.state;
     final updateTarget = updateState.target;
     final updateBusy = updateState.status == UpdateStateStatus.checking ||
+        updateState.status == UpdateStateStatus.permissionRequired ||
+        updateState.status == UpdateStateStatus.downloading ||
         updateState.status == UpdateStateStatus.installing;
 
     return Scaffold(
@@ -121,6 +123,9 @@ class _AboutAppScreenState extends State<AboutAppScreen> {
             onCheckPressed: () => _handleManualUpdateCheck(updateController),
             onInstallPressed: () =>
                 _handleInstallCurrentUpdate(updateController),
+            error: updateState.error,
+            installResult: updateState.installResult,
+            downloadProgress: updateState.downloadProgress,
           ),
           const SizedBox(height: 12),
           UpdateChannelSection(

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:provider/provider.dart';
@@ -11,6 +10,7 @@ import '../services/template_service.dart';
 import '../services/notification_service.dart';
 import '../services/storage_service.dart';
 import '../services/security_service.dart';
+import '../services/update/app_build_info_service.dart';
 import '../services/update/update_controller.dart';
 import '../widgets/pin_code_dialog.dart';
 import '../widgets/update/about_app_entry_tile.dart';
@@ -49,6 +49,7 @@ class SettingsScreenState extends State<SettingsScreen> {
   late final dynamic _notificationService;
   late final dynamic _db;
   late final dynamic _securityService;
+  final AppBuildInfoService _appBuildInfoService = const AppBuildInfoService();
 
   @override
   void initState() {
@@ -77,14 +78,10 @@ class SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _loadAppInfo() async {
     try {
-      final text = await rootBundle.loadString('pubspec.yaml');
-      final match =
-          RegExp(r'^version:\s*([^\s]+)', multiLine: true).firstMatch(text);
-      final raw = match?.group(1) ?? '';
-      final semver = raw.split('+').first;
+      final buildInfo = await _appBuildInfoService.getCurrentBuildInfo();
       if (!mounted) return;
       setState(() {
-        _appVersion = semver;
+        _appVersion = buildInfo.version;
       });
     } catch (_) {
       if (!mounted) return;
@@ -111,7 +108,8 @@ class SettingsScreenState extends State<SettingsScreen> {
     final Future<bool> statsIncludeEventBooksFuture =
         _db.getStatsIncludeEventBooks();
     final Future<bool> eventBooksEnabledFuture = _db.getEventBooksEnabled();
-    final Future<String> securityModeFuture = _securityService.getSecurityMode();
+    final Future<String> securityModeFuture =
+        _securityService.getSecurityMode();
 
     final results = await Future.wait<dynamic>([
       prefsFuture,
@@ -217,10 +215,54 @@ class SettingsScreenState extends State<SettingsScreen> {
     _loadSettings();
   }
 
+  ({bool showRedDot, String? chipText}) _resolveAboutUpdateEntryState(
+    UpdateState updateState,
+  ) {
+    final shouldShowUpdateState = updateState.showRedDot ||
+        updateState.target != null ||
+        updateState.status == UpdateStateStatus.downloading ||
+        updateState.status == UpdateStateStatus.installing ||
+        updateState.status == UpdateStateStatus.permissionRequired;
+
+    if (!shouldShowUpdateState) {
+      return (showRedDot: false, chipText: null);
+    }
+
+    final defaultChipText = switch (updateState.status) {
+      UpdateStateStatus.downloading => '后台下载中',
+      UpdateStateStatus.installing => '等待安装',
+      UpdateStateStatus.permissionRequired => '需开启权限',
+      UpdateStateStatus.error => '更新未完成',
+      _ => '发现新版本',
+    };
+
+    switch (updateState.status) {
+      case UpdateStateStatus.downloading:
+        final fraction = updateState.downloadProgress?.fraction;
+        if (fraction == null) {
+          return (showRedDot: true, chipText: defaultChipText);
+        }
+        final percent = (fraction * 100).clamp(0, 100).round();
+        return (showRedDot: true, chipText: '下载中 $percent%');
+      case UpdateStateStatus.installing:
+        return (showRedDot: true, chipText: defaultChipText);
+      case UpdateStateStatus.permissionRequired:
+        return (showRedDot: true, chipText: defaultChipText);
+      case UpdateStateStatus.error:
+        return (
+          showRedDot: updateState.target != null || updateState.showRedDot,
+          chipText: updateState.target == null ? null : defaultChipText,
+        );
+      case UpdateStateStatus.available:
+      case UpdateStateStatus.idle:
+      case UpdateStateStatus.checking:
+      case UpdateStateStatus.upToDate:
+        return (showRedDot: true, chipText: '发现新版本');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final updateController = context.watch<UpdateController>();
-
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
       body: SafeArea(
@@ -420,18 +462,27 @@ class SettingsScreenState extends State<SettingsScreen> {
                     _buildSectionCard(
                       title: '关于',
                       children: [
-                        AboutAppEntryTile(
-                          currentVersion: _appVersion,
-                          showRedDot: updateController.state.showRedDot,
-                          showUpdateChip: updateController.state.showRedDot,
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => AboutAppScreen(
-                                  currentVersion: _appVersion,
-                                ),
-                              ),
+                        Selector<UpdateController,
+                            ({bool showRedDot, String? chipText})>(
+                          selector: (_, controller) =>
+                              _resolveAboutUpdateEntryState(controller.state),
+                          builder: (context, aboutUpdateState, _) {
+                            return AboutAppEntryTile(
+                              currentVersion: _appVersion,
+                              showRedDot: aboutUpdateState.showRedDot,
+                              showUpdateChip: aboutUpdateState.chipText != null,
+                              updateChipText:
+                                  aboutUpdateState.chipText ?? '发现新版本',
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => AboutAppScreen(
+                                      currentVersion: _appVersion,
+                                    ),
+                                  ),
+                                );
+                              },
                             );
                           },
                         ),
@@ -645,5 +696,4 @@ class SettingsScreenState extends State<SettingsScreen> {
       visualDensity: VisualDensity.compact,
     );
   }
-
 }

@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:provider/provider.dart';
 import '../models/gift.dart';
 import '../models/guest.dart';
-import '../models/update_target.dart';
 import '../services/storage_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/lunar_utils.dart';
@@ -14,11 +12,7 @@ import '../widgets/hero_section.dart';
 import '../widgets/horizontal_quick_actions.dart';
 import '../widgets/grouped_timeline.dart';
 import '../services/security_service.dart';
-import '../services/update/update_controller.dart';
-import '../services/update/update_keys.dart';
-import '../services/update/update_ui_coordinator.dart';
 import '../utils/security_unlock.dart';
-import '../widgets/update/update_status_banner.dart';
 import 'add_record_screen.dart';
 import 'record_list_screen.dart';
 import 'pending_list_screen.dart';
@@ -66,7 +60,6 @@ class DashboardScreenState extends State<DashboardScreen>
   bool _eventBooksEnabled = true;
   final SecurityService _securityService = SecurityService();
   bool _isFirstLoad = true; // 标记是否首次加载，用于控制入场动画
-  String? _dismissedUpdateBannerKey;
 
   // 动画控制器
   late AnimationController _animationController;
@@ -494,9 +487,6 @@ class DashboardScreenState extends State<DashboardScreen>
 
   @override
   Widget build(BuildContext context) {
-    final updateState = context.select<UpdateController, UpdateState>(
-      (controller) => controller.state,
-    );
     final bottomPadding = MediaQuery.of(context).padding.bottom;
     final fabBottom = 64.0 +
         (bottomPadding > 12 ? bottomPadding : 12.0) +
@@ -559,24 +549,6 @@ class DashboardScreenState extends State<DashboardScreen>
                     const SliverToBoxAdapter(
                       child: SizedBox(height: AppTheme.spacingM),
                     ),
-
-                    if (_shouldShowUpdateBanner(updateState))
-                      SliverToBoxAdapter(
-                        child: Padding(
-                          padding:
-                              const EdgeInsets.only(bottom: AppTheme.spacingM),
-                          child: UpdateStatusBanner(
-                            target: updateState.target!,
-                            isInstalling:
-                                updateState.status ==
-                                UpdateStateStatus.installing,
-                            onInstall: _handleInstallCurrentUpdate,
-                            onDismiss: () {
-                              _dismissUpdateBanner(updateState.target!);
-                            },
-                          ),
-                        ),
-                      ),
 
                     // 横向快捷操作 - 带动画
                     SliverToBoxAdapter(
@@ -853,40 +825,5 @@ class DashboardScreenState extends State<DashboardScreen>
         },
       ),
     );
-  }
-
-  bool _shouldShowUpdateBanner(UpdateState updateState) {
-    final target = updateState.target;
-    if (!updateState.showBanner || target == null) {
-      return false;
-    }
-
-    return _dismissedUpdateBannerKey != _buildTargetKey(target);
-  }
-
-  void _dismissUpdateBanner(UpdateTarget target) {
-    setState(() {
-      _dismissedUpdateBannerKey = _buildTargetKey(target);
-    });
-  }
-
-  Future<void> _handleInstallCurrentUpdate() async {
-    final controller = context.read<UpdateController>();
-    final message = await installCurrentUpdateAndCollectMessage(controller);
-    if (!mounted) {
-      return;
-    }
-
-    if (message == null || message.isEmpty) {
-      return;
-    }
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
-  }
-
-  String _buildTargetKey(UpdateTarget target) {
-    return buildSafeUpdateTargetKey(target);
   }
 }

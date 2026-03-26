@@ -128,4 +128,40 @@ void main() {
     promptCompleter.complete(null);
     await tester.pumpAndSettle();
   });
+
+  testWidgets('设置 Tab 在有更新时显示红点', (tester) async {
+    final controller = _MainNavigationTestController();
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<UpdateController>.value(
+        value: controller,
+        child: const MaterialApp(
+          home: MainNavigation(
+            screens: [
+              SizedBox.shrink(),
+              SizedBox.shrink(),
+              SizedBox.shrink(),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    expect(find.byKey(const ValueKey('settings-tab-red-dot')), findsNothing);
+
+    controller.emit(
+      const UpdateState(
+        status: UpdateStateStatus.available,
+        target: UpdateTarget(
+          channel: UpdateChannel.stable,
+          platform: UpdatePlatform.android,
+          version: '1.3.0',
+        ),
+        showRedDot: true,
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('settings-tab-red-dot')), findsOneWidget);
+  });
 }
