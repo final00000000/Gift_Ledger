@@ -36,7 +36,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         '--platform',
         required=True,
-        choices=('android', 'windows', 'ios'),
+        choices=('android', 'windows'),
         help='目标平台，用于生成资产名称',
     )
     parser.add_argument('--github-output', help='GitHub Actions 输出文件路径')
@@ -188,18 +188,16 @@ def build_asset_names(
             'asset_name_arm64_v8a': arm64_asset_name,
         }
 
-    if platform == 'ios':
-        asset_base_name = f'{app_name}-{channel}-ios-v{semver}-build{build_number}'
+    if platform == 'windows':
+        asset_base_name = (
+            f'{app_name}-{channel}-windows-v{semver}-build{build_number}-setup'
+        )
         return {
             'asset_base_name': asset_base_name,
-            'asset_name': f'{asset_base_name}.ipa',
+            'asset_name': f'{asset_base_name}.exe',
         }
 
-    asset_base_name = f'{app_name}-{channel}-windows-v{semver}-build{build_number}-setup'
-    return {
-        'asset_base_name': asset_base_name,
-        'asset_name': f'{asset_base_name}.exe',
-    }
+    raise ValueError(f'Unsupported platform: {platform}')
 
 
 def validate_pubspec_build_number(pubspec_semver: str, pubspec_build_number: str) -> None:

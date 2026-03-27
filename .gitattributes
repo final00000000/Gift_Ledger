@@ -47,5 +47,4 @@ gradlew text
 *.tar binary
 *.gz binary
 *.apk binary
-*.ipa binary
 *.aab binary
