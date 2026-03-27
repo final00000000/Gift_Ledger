@@ -23,6 +23,16 @@ class ImportResult {
   });
 }
 
+class _ExportPayload {
+  final List<Map<String, dynamic>> guests;
+  final List<Map<String, dynamic>> gifts;
+
+  const _ExportPayload({
+    required this.guests,
+    required this.gifts,
+  });
+}
+
 class ExportService {
   final StorageService _storage = StorageService();
   final DateFormat _dateFormat = DateFormat('yyyy-MM-dd');
@@ -32,8 +42,15 @@ class ExportService {
 
   Future<String?> exportToJson() async {
     try {
-      // 使用 compute 在后台 Isolate 中处理导出
-      final result = await compute(_exportToJsonInBackground, null);
+      final guests = await _storage.getAllGuests();
+      final gifts = await _storage.getAllGifts();
+      final result = await compute(
+        _exportToJsonInBackground,
+        _ExportPayload(
+          guests: guests.map((guest) => guest.toMap()).toList(),
+          gifts: gifts.map((gift) => gift.toMap()).toList(),
+        ),
+      );
 
       final fileName = '随礼记_备份_${_dateFormat.format(DateTime.now())}.json';
       return await _saveFile(
@@ -45,17 +62,12 @@ class ExportService {
     }
   }
 
-  // 在后台 Isolate 中执行的导出逻辑
-  static Future<String> _exportToJsonInBackground(_) async {
-    final storage = StorageService();
-    final guests = await storage.getAllGuests();
-    final gifts = await storage.getAllGifts();
-
-    final Map<String, dynamic> data = {
+  static String _exportToJsonInBackground(_ExportPayload payload) {
+    final data = {
       'version': '1.0',
       'exportDate': DateTime.now().toIso8601String(),
-      'guests': guests.map((g) => g.toMap()).toList(),
-      'gifts': gifts.map((g) => g.toMap()).toList(),
+      'guests': payload.guests,
+      'gifts': payload.gifts,
     };
 
     return const JsonEncoder.withIndent('  ').convert(data);
@@ -63,8 +75,15 @@ class ExportService {
 
   Future<String?> exportToExcel() async {
     try {
-      // 使用 compute 在后台 Isolate 中处理导出
-      final fileBytes = await compute(_exportToExcelInBackground, null);
+      final guests = await _storage.getAllGuests();
+      final gifts = await _storage.getAllGifts();
+      final fileBytes = await compute(
+        _exportToExcelInBackground,
+        _ExportPayload(
+          guests: guests.map((guest) => guest.toMap()).toList(),
+          gifts: gifts.map((gift) => gift.toMap()).toList(),
+        ),
+      );
 
       if (fileBytes != null) {
         final fileName = '随礼记_数据_${_dateFormat.format(DateTime.now())}.xlsx';
@@ -79,27 +98,24 @@ class ExportService {
     }
   }
 
-  // 在后台 Isolate 中执行的 Excel 导出逻辑
-  static Future<List<int>?> _exportToExcelInBackground(_) async {
-    final storage = StorageService();
-    final guests = await storage.getAllGuests();
-    final gifts = await storage.getAllGifts();
-
-    final Map<int, Guest> guestMap = {for (var g in guests) g.id!: g};
+  static List<int>? _exportToExcelInBackground(_ExportPayload payload) {
+    final guests = payload.guests.map(Guest.fromMap).toList();
+    final gifts = payload.gifts.map(Gift.fromMap).toList();
+    final guestMap = {for (final guest in guests) guest.id!: guest};
     final dateFormat = DateFormat('yyyy-MM-dd');
 
-    var excel = Excel.createExcel();
-    Sheet sheet = excel['Sheet1'];
+    final excel = Excel.createExcel();
+    final sheet = excel['Sheet1'];
 
-    List<String> headers = ['姓名', '关系', '类型', '事由', '金额', '日期', '备注'];
-    sheet.appendRow(headers.map((h) => TextCellValue(h)).toList());
+    const headers = ['姓名', '关系', '类型', '事由', '金额', '日期', '备注'];
+    sheet.appendRow(headers.map((header) => TextCellValue(header)).toList());
 
-    for (var gift in gifts) {
+    for (final gift in gifts) {
       final guest = guestMap[gift.guestId];
       final guestName = guest?.name ?? '未知';
       final relationship = guest?.relationship ?? '其他';
 
-      List<CellValue> row = [
+      sheet.appendRow([
         TextCellValue(guestName),
         TextCellValue(relationship),
         TextCellValue(gift.isReceived ? '收礼' : '送礼'),
@@ -107,8 +123,7 @@ class ExportService {
         DoubleCellValue(gift.amount),
         TextCellValue(dateFormat.format(gift.date)),
         TextCellValue(gift.note ?? ''),
-      ];
-      sheet.appendRow(row);
+      ]);
     }
 
     return excel.encode();
@@ -145,7 +160,7 @@ class ExportService {
         sheet.appendRow(row);
       }
       
-      final fileName = '随礼记_${listType}清单_${_dateFormat.format(DateTime.now())}.xlsx';
+      final fileName = '随礼记_$listType清单_${_dateFormat.format(DateTime.now())}.xlsx';
       final fileBytes = excel.encode();
 
       if (fileBytes != null) {
