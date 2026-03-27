@@ -36,7 +36,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         '--platform',
         required=True,
-        choices=('android', 'windows'),
+        choices=('android', 'windows', 'ios'),
         help='目标平台，用于生成资产名称',
     )
     parser.add_argument('--github-output', help='GitHub Actions 输出文件路径')
@@ -176,8 +176,23 @@ def build_asset_names(
     build_number: int,
 ) -> dict[str, str]:
     if platform == 'android':
+        asset_base_name = (
+            f'{app_name}-{channel}-android-v{semver}-build{build_number}'
+        )
+        arm64_asset_name = f'{asset_base_name}-arm64-v8a.apk'
         return {
-            'asset_name': f'{app_name}-{channel}-android-v{semver}-build{build_number}.apk',
+            'asset_base_name': asset_base_name,
+            # 顶层 Android 入口固定指向 arm64 包，split 变体通过独立字段暴露。
+            'asset_name': arm64_asset_name,
+            'asset_name_armeabi_v7a': f'{asset_base_name}-armeabi-v7a.apk',
+            'asset_name_arm64_v8a': arm64_asset_name,
+        }
+
+    if platform == 'ios':
+        asset_base_name = f'{app_name}-{channel}-ios-v{semver}-build{build_number}'
+        return {
+            'asset_base_name': asset_base_name,
+            'asset_name': f'{asset_base_name}.ipa',
         }
 
     asset_base_name = f'{app_name}-{channel}-windows-v{semver}-build{build_number}-setup'

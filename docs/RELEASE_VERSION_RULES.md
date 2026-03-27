@@ -12,6 +12,7 @@
 - 同一核心版本下，**stable 永远高于 beta**
 - `patch >= 10` 时，`versionCode` 仍保持单调递增
 - 避免手动选择 `beta` 却发布出错误版本
+- Android 发布产物固定收敛为 **ARMv7 / ARM64 两个 APK**
 
 ---
 
@@ -58,29 +59,17 @@ versionCode = major * 1_000_000
 version: 1.3.2+1030299
 ```
 
-含义：
-
-- `1.3.2` 是 `versionName`
-- `1030299` 是 stable 的 `versionCode`
-
 ### 3.2 beta 版本
 
 beta 发布时，**不需要把 `pubspec.yaml` 改成 beta**。
 
 例如要发 `1.3.2-beta.2`：
 
-- `pubspec.yaml` 仍然保持：
-
 ```yaml
 version: 1.3.2+1030299
 ```
 
-- 真正的 beta 版本号与 build number 由 GitHub Actions 发布参数覆盖
-
-这样可以保证：
-
-- 主线文件始终表达当前 stable 目标版本
-- beta 包仍能得到正确的 `versionName/versionCode`
+真正的 beta 版本号与 build number 由 GitHub Actions 发布参数覆盖。
 
 ---
 
@@ -126,8 +115,6 @@ release_notes = 测试包：验证应用内更新链路
 
 ### 4.3 beta 禁止的错误填法
 
-下面这种写法会直接失败：
-
 ```text
 channel = beta
 release_tag = 留空
@@ -142,9 +129,20 @@ release_tag = 留空
 ### Android
 
 ```text
-gift_ledger-stable-android-v1.3.2-build1030299.apk
-gift_ledger-beta-android-v1.3.2-beta.2-build1030202.apk
+gift_ledger-stable-android-v1.3.2-build1030299-armeabi-v7a.apk
+gift_ledger-stable-android-v1.3.2-build1030299-arm64-v8a.apk
+
+gift_ledger-beta-android-v1.3.2-beta.2-build1030202-armeabi-v7a.apk
+gift_ledger-beta-android-v1.3.2-beta.2-build1030202-arm64-v8a.apk
 ```
+
+说明：
+
+- 不再发布 `universal.apk`
+- 不再发布 `x86 / x86_64`
+- update manifest 顶层 `downloadUrl` 指向 `arm64-v8a.apk`
+- 新客户端会优先读取 `variants.armeabi-v7a` / `variants.arm64-v8a`
+- 旧版若只读取顶层链接，将拿到 `arm64-v8a.apk`，因此仓库发布链路默认面向 ARM 设备
 
 ### Windows
 
@@ -158,13 +156,6 @@ gift_ledger-beta-windows-v1.3.2-beta.2-build1030202-setup.exe
 ## 6. 为什么 stable 要用 99
 
 如果同一核心版本下 beta 比 stable 大，例如：
-
-- `1.3.2-beta.2 = 1322`
-- `1.3.2 = 1320`
-
-那么 Android 会把 stable 视为**降级安装**。
-
-现在改成：
 
 - `1.3.2-beta.2 = 1030202`
 - `1.3.2 = 1030299`
@@ -182,6 +173,7 @@ gift_ledger-beta-windows-v1.3.2-beta.2-build1030202-setup.exe
 - stable 发布时，`release_tag` 与 stable 版本一致
 - beta 发布时，`release_tag` 使用完整 prerelease 格式
 - `release_notes` 已填写本次更新说明
+- Android Release 中只包含 `armeabi-v7a` / `arm64-v8a`
 - 产物名称中的 `version` / `build` 与目标版本一致
 
 ---
@@ -205,6 +197,3 @@ channel       = beta
 release_tag   = v1.3.2-beta.2（必填）
 产物版本      = 1.3.2-beta.2 / 1030202
 ```
-
-
-

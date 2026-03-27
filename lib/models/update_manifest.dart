@@ -31,10 +31,7 @@ class UpdateManifest {
   }
 
   Map<UpdateChannel, UpdateChannelManifest> get channels {
-    return {
-      UpdateChannel.stable: stable,
-      UpdateChannel.beta: beta,
-    };
+    return {UpdateChannel.stable: stable, UpdateChannel.beta: beta};
   }
 
   UpdateChannelManifest getChannel(UpdateChannel channel) {
@@ -47,8 +44,9 @@ class UpdateManifest {
   }
 
   UpdateManifestEntry? getEntry(UpdateTarget target) {
-    return getChannel(target.effectiveResolvedTargetChannel)
-        .getEntry(target.platform);
+    return getChannel(
+      target.effectiveResolvedTargetChannel,
+    ).getEntry(target.platform);
   }
 
   static Map<String, dynamic> _readChannelsJson(Map<String, dynamic> json) {
@@ -57,10 +55,7 @@ class UpdateManifest {
       return _requireJsonMap(channels, 'channels');
     }
 
-    return {
-      'stable': json['stable'],
-      'beta': json['beta'],
-    };
+    return {'stable': json['stable'], 'beta': json['beta']};
   }
 
   static int? _readSchemaVersion(dynamic value) {
@@ -107,10 +102,7 @@ class UpdateChannelManifest {
   final UpdateManifestEntry? android;
   final UpdateManifestEntry? windows;
 
-  const UpdateChannelManifest({
-    this.android,
-    this.windows,
-  });
+  const UpdateChannelManifest({this.android, this.windows});
 
   factory UpdateChannelManifest.fromJson(
     Map<String, dynamic> json, {
@@ -151,6 +143,7 @@ class UpdateManifestEntry {
   final String sha256;
   final String packageType;
   final String notes;
+  final Map<String, UpdateManifestVariant> variants;
 
   const UpdateManifestEntry({
     required this.version,
@@ -159,6 +152,7 @@ class UpdateManifestEntry {
     required this.sha256,
     required this.packageType,
     required this.notes,
+    this.variants = const <String, UpdateManifestVariant>{},
   });
 
   factory UpdateManifestEntry.fromJson(
@@ -171,26 +165,12 @@ class UpdateManifestEntry {
         fieldName: 'version',
         path: path,
       ),
-      buildNumber: _requireBuildNumber(
-        json['buildNumber'],
-        path: path,
-      ),
-      downloadUrl: _requireDownloadUrl(
-        json['downloadUrl'],
-        path: path,
-      ),
-      sha256: _requireSha256(
-        json['sha256'],
-        path: path,
-      ),
-      packageType: _requirePackageType(
-        json['packageType'],
-        path: path,
-      ),
-      notes: _readNotes(
-        json['notes'],
-        path: path,
-      ),
+      buildNumber: _requireBuildNumber(json['buildNumber'], path: path),
+      downloadUrl: _requireDownloadUrl(json['downloadUrl'], path: path),
+      sha256: _requireSha256(json['sha256'], path: path),
+      packageType: _requirePackageType(json['packageType'], path: path),
+      notes: _readNotes(json['notes'], path: path),
+      variants: _readVariants(json['variants'], path: path),
     );
   }
 
@@ -214,6 +194,69 @@ class UpdateManifestEntry {
     );
   }
 
+  UpdateManifestVariant? resolveVariant({String? preferredAbi}) {
+    if (variants.isEmpty) {
+      return null;
+    }
+
+    final normalizedAbi = normalizeAndroidAbi(preferredAbi);
+    if (normalizedAbi == null) {
+      return null;
+    }
+
+    return variants[normalizedAbi];
+  }
+
+  String resolveDownloadUrl({String? preferredAbi}) {
+    return resolveVariant(preferredAbi: preferredAbi)?.downloadUrl ??
+        downloadUrl;
+  }
+
+  String resolveSha256({String? preferredAbi}) {
+    return resolveVariant(preferredAbi: preferredAbi)?.sha256 ?? sha256;
+  }
+
+  String resolvePackageType({String? preferredAbi}) {
+    return resolveVariant(preferredAbi: preferredAbi)?.packageType ??
+        packageType;
+  }
+
+  String? resolveAbi({String? preferredAbi}) {
+    return resolveVariant(preferredAbi: preferredAbi)?.abi;
+  }
+
+  static String? normalizeAndroidAbi(String? value) {
+    if (value == null) {
+      return null;
+    }
+
+    final normalized = value.trim().toLowerCase().replaceAll('_', '-');
+    if (normalized.isEmpty) {
+      return null;
+    }
+
+    switch (normalized) {
+      case 'arm64':
+      case 'arm64v8a':
+      case 'arm64-v8a':
+      case 'aarch64':
+        return 'arm64-v8a';
+      case 'armeabi':
+      case 'armeabi-v7a':
+      case 'arm-v7a':
+      case 'armv7':
+      case 'android-arm':
+        return 'armeabi-v7a';
+      case 'x86':
+        return 'x86';
+      case 'x86-64':
+      case 'x86_64':
+        return 'x86_64';
+      default:
+        return normalized;
+    }
+  }
+
   static String _requireNonEmptyString(
     dynamic value, {
     required String fieldName,
@@ -231,10 +274,7 @@ class UpdateManifestEntry {
     );
   }
 
-  static int _requireBuildNumber(
-    dynamic value, {
-    required String path,
-  }) {
+  static int _requireBuildNumber(dynamic value, {required String path}) {
     if (value is int) {
       return value;
     }
@@ -244,10 +284,7 @@ class UpdateManifestEntry {
     );
   }
 
-  static String _requireDownloadUrl(
-    dynamic value, {
-    required String path,
-  }) {
+  static String _requireDownloadUrl(dynamic value, {required String path}) {
     final url = _requireNonEmptyString(
       value,
       fieldName: 'downloadUrl',
@@ -263,10 +300,7 @@ class UpdateManifestEntry {
     );
   }
 
-  static String _requireSha256(
-    dynamic value, {
-    required String path,
-  }) {
+  static String _requireSha256(dynamic value, {required String path}) {
     final sha256 = _requireNonEmptyString(
       value,
       fieldName: 'sha256',
@@ -282,10 +316,7 @@ class UpdateManifestEntry {
     );
   }
 
-  static String _requirePackageType(
-    dynamic value, {
-    required String path,
-  }) {
+  static String _requirePackageType(dynamic value, {required String path}) {
     final packageType = _requireNonEmptyString(
       value,
       fieldName: 'packageType',
@@ -300,10 +331,7 @@ class UpdateManifestEntry {
     );
   }
 
-  static String _readNotes(
-    dynamic value, {
-    required String path,
-  }) {
+  static String _readNotes(dynamic value, {required String path}) {
     if (value == null) {
       return '';
     }
@@ -314,6 +342,88 @@ class UpdateManifestEntry {
 
     throw FormatException(
       'Invalid update manifest entry: "$path.notes" must be a string.',
+    );
+  }
+
+  static Map<String, UpdateManifestVariant> _readVariants(
+    dynamic value, {
+    required String path,
+  }) {
+    if (value == null) {
+      return const <String, UpdateManifestVariant>{};
+    }
+    if (value is! Map) {
+      throw FormatException(
+        'Invalid update manifest entry: "$path.variants" must be an object.',
+      );
+    }
+
+    final result = <String, UpdateManifestVariant>{};
+    for (final rawEntry in value.entries) {
+      final abiKey = rawEntry.key;
+      if (abiKey is! String) {
+        throw FormatException(
+          'Invalid update manifest entry: "$path.variants" keys must be strings.',
+        );
+      }
+
+      final normalizedAbi = normalizeAndroidAbi(abiKey);
+      if (normalizedAbi == null) {
+        throw FormatException(
+          'Invalid update manifest entry: "$path.variants.$abiKey" has an empty ABI key.',
+        );
+      }
+      if (rawEntry.value is! Map) {
+        throw FormatException(
+          'Invalid update manifest entry: "$path.variants.$normalizedAbi" must be an object.',
+        );
+      }
+      if (result.containsKey(normalizedAbi)) {
+        throw FormatException(
+          'Invalid update manifest entry: "$path.variants.$normalizedAbi" is duplicated.',
+        );
+      }
+
+      result[normalizedAbi] = UpdateManifestVariant.fromJson(
+        Map<String, dynamic>.from(rawEntry.value as Map),
+        path: '$path.variants.$normalizedAbi',
+        abi: normalizedAbi,
+      );
+    }
+
+    return Map<String, UpdateManifestVariant>.unmodifiable(result);
+  }
+}
+
+class UpdateManifestVariant {
+  final String abi;
+  final String downloadUrl;
+  final String sha256;
+  final String packageType;
+
+  const UpdateManifestVariant({
+    required this.abi,
+    required this.downloadUrl,
+    required this.sha256,
+    required this.packageType,
+  });
+
+  factory UpdateManifestVariant.fromJson(
+    Map<String, dynamic> json, {
+    required String path,
+    required String abi,
+  }) {
+    return UpdateManifestVariant(
+      abi: abi,
+      downloadUrl: UpdateManifestEntry._requireDownloadUrl(
+        json['downloadUrl'],
+        path: path,
+      ),
+      sha256: UpdateManifestEntry._requireSha256(json['sha256'], path: path),
+      packageType: UpdateManifestEntry._requirePackageType(
+        json['packageType'],
+        path: path,
+      ),
     );
   }
 }

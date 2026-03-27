@@ -55,6 +55,27 @@ class ResolveReleaseMetadataTest(unittest.TestCase):
         self.assertEqual(channel, 'beta')
         self.assertEqual(release_tag, 'v1.3.1-beta.2')
 
+    def test_android_asset_names_only_include_split_abis(self) -> None:
+        names = MODULE.build_asset_names(
+            app_name='gift_ledger',
+            channel='stable',
+            platform='android',
+            semver='1.3.2',
+            build_number=1030299,
+        )
+        self.assertEqual(
+            names['asset_name'],
+            'gift_ledger-stable-android-v1.3.2-build1030299-arm64-v8a.apk',
+        )
+        self.assertEqual(
+            names['asset_name_armeabi_v7a'],
+            'gift_ledger-stable-android-v1.3.2-build1030299-armeabi-v7a.apk',
+        )
+        self.assertEqual(
+            names['asset_name_arm64_v8a'],
+            'gift_ledger-stable-android-v1.3.2-build1030299-arm64-v8a.apk',
+        )
+
 
 if __name__ == '__main__':
     unittest.main()

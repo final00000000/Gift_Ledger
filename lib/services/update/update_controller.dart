@@ -58,13 +58,13 @@ class UpdateController extends ChangeNotifier {
     UpdateResolver resolver = const UpdateResolver(),
     UpdatePromptPolicy promptPolicy = const UpdatePromptPolicy(),
     UpdateChannel selectedChannel = UpdateChannel.stable,
-  })  : _repository = repository,
-        _appBuildInfoService = appBuildInfoService,
-        _configService = configService ?? ConfigService(),
-        _installer = installer ?? createUpdateInstaller(),
-        _resolver = resolver,
-        _promptPolicy = promptPolicy,
-        _selectedChannel = selectedChannel {
+  }) : _repository = repository,
+       _appBuildInfoService = appBuildInfoService,
+       _configService = configService ?? ConfigService(),
+       _installer = installer ?? createUpdateInstaller(),
+       _resolver = resolver,
+       _promptPolicy = promptPolicy,
+       _selectedChannel = selectedChannel {
     _selectedChannel = _restoreSelectedChannel(selectedChannel);
     _promptedTargetKeys.addAll(_readKeySet(promptedTargetKeysConfigKey));
     _ignoredTargetKeys.addAll(_readKeySet(ignoredTargetKeysConfigKey));
@@ -131,6 +131,7 @@ class UpdateController extends ChangeNotifier {
         platform: buildInfo.platform,
         currentVersion: buildInfo.version,
         currentBuildNumber: buildInfo.buildNumber,
+        currentAbi: buildInfo.androidAbi,
       );
 
       if (target == null) {
@@ -228,10 +229,7 @@ class UpdateController extends ChangeNotifier {
 
     final source = _state.lastSource ?? UpdateCheckSource.manual;
     _clearPendingInstallTracking();
-    _state = _buildAvailableState(
-      source: source,
-      target: target,
-    );
+    _state = _buildAvailableState(source: source, target: target);
     notifyListeners();
   }
 
@@ -401,8 +399,8 @@ class UpdateController extends ChangeNotifier {
       _clearPendingInstallTracking();
       final resolvedStatus =
           _state.status == UpdateStateStatus.permissionRequired
-              ? UpdateStateStatus.permissionRequired
-              : UpdateStateStatus.available;
+          ? UpdateStateStatus.permissionRequired
+          : UpdateStateStatus.available;
       _state = _buildAvailableState(
         source: source,
         target: target,
@@ -423,8 +421,8 @@ class UpdateController extends ChangeNotifier {
     final currentProgress = _state.downloadProgress;
     final didChange =
         currentProgress?.receivedBytes != progress.receivedBytes ||
-            currentProgress?.totalBytes != progress.totalBytes ||
-            _state.status != UpdateStateStatus.downloading;
+        currentProgress?.totalBytes != progress.totalBytes ||
+        _state.status != UpdateStateStatus.downloading;
     if (!didChange) {
       return;
     }
@@ -481,7 +479,8 @@ class UpdateController extends ChangeNotifier {
     required UpdateTarget target,
     UpdatePromptDecision? overrideDecision,
   }) {
-    final resolvedDecision = overrideDecision ??
+    final resolvedDecision =
+        overrideDecision ??
         _promptPolicy.decide(
           source: source,
           target: target,
@@ -546,8 +545,9 @@ class UpdateController extends ChangeNotifier {
   }
 
   UpdateChannel _restoreSelectedChannel(UpdateChannel fallback) {
-    final savedChannel =
-        _configService.getString(selectedUpdateChannelConfigKey);
+    final savedChannel = _configService.getString(
+      selectedUpdateChannelConfigKey,
+    );
     if (savedChannel == null || savedChannel.isEmpty) {
       return fallback;
     }

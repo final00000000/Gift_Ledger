@@ -111,9 +111,7 @@ void main() {
     test('缺失关键字段时抛出清晰异常', () {
       expect(
         () => UpdateManifest.fromJson(
-          _manifestJsonWithStableWindowsOverrides({
-            'sha256': null,
-          }),
+          _manifestJsonWithStableWindowsOverrides({'sha256': null}),
         ),
         throwsA(
           isA<FormatException>().having(
@@ -147,9 +145,7 @@ void main() {
     test('空 version 时抛出清晰异常', () {
       expect(
         () => UpdateManifest.fromJson(
-          _manifestJsonWithStableWindowsOverrides({
-            'version': '   ',
-          }),
+          _manifestJsonWithStableWindowsOverrides({'version': '   '}),
         ),
         throwsA(
           isA<FormatException>().having(
@@ -164,9 +160,7 @@ void main() {
     test('缺失 packageType 时抛出清晰异常', () {
       expect(
         () => UpdateManifest.fromJson(
-          _manifestJsonWithStableWindowsOverrides({
-            'packageType': null,
-          }),
+          _manifestJsonWithStableWindowsOverrides({'packageType': null}),
         ),
         throwsA(
           isA<FormatException>().having(
@@ -181,9 +175,7 @@ void main() {
     test('packageType 超出一期允许集合时抛出清晰异常', () {
       expect(
         () => UpdateManifest.fromJson(
-          _manifestJsonWithStableWindowsOverrides({
-            'packageType': 'dmg',
-          }),
+          _manifestJsonWithStableWindowsOverrides({'packageType': 'dmg'}),
         ),
         throwsA(
           isA<FormatException>().having(
@@ -192,6 +184,58 @@ void main() {
             allOf(contains('packageType'), contains('apk')),
           ),
         ),
+      );
+    });
+
+    test('android 节点支持按 ABI 读取变体资源', () {
+      final manifest = UpdateManifest.fromJson({
+        'channels': {
+          'stable': {
+            'android': {
+              'version': '1.3.2',
+              'buildNumber': 1030299,
+              'downloadUrl':
+                  'https://example.com/gift_ledger-stable-android-v1.3.2-build1030299-arm64-v8a.apk',
+              'sha256':
+                  'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+              'packageType': 'apk',
+              'notes': 'Android stable',
+              'variants': {
+                'armeabi-v7a': {
+                  'downloadUrl':
+                      'https://example.com/gift_ledger-stable-android-v1.3.2-build1030299-armeabi-v7a.apk',
+                  'sha256':
+                      'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+                  'packageType': 'apk',
+                },
+                'arm64-v8a': {
+                  'downloadUrl':
+                      'https://example.com/gift_ledger-stable-android-v1.3.2-build1030299-arm64-v8a.apk',
+                  'sha256':
+                      'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
+                  'packageType': 'apk',
+                },
+              },
+            },
+          },
+          'beta': {},
+        },
+      });
+
+      final entry = manifest.stable.android;
+      expect(entry, isNotNull);
+      expect(
+        entry?.resolveDownloadUrl(preferredAbi: 'armeabi-v7a'),
+        'https://example.com/gift_ledger-stable-android-v1.3.2-build1030299-armeabi-v7a.apk',
+      );
+      expect(
+        entry?.resolveSha256(preferredAbi: 'arm64-v8a'),
+        'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
+      );
+      expect(entry?.resolveAbi(preferredAbi: 'arm64-v8a'), 'arm64-v8a');
+      expect(
+        entry?.resolveDownloadUrl(preferredAbi: 'x86_64'),
+        'https://example.com/gift_ledger-stable-android-v1.3.2-build1030299-arm64-v8a.apk',
       );
     });
 

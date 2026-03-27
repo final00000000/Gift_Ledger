@@ -15,6 +15,7 @@ from typing import Any
 ALLOWED_CHANNELS = ("stable", "beta")
 ALLOWED_PLATFORMS = ("android", "windows")
 ALLOWED_PACKAGE_TYPES = ("apk", "exe", "msix")
+ALLOWED_ANDROID_ABIS = ("armeabi-v7a", "arm64-v8a")
 REQUIRED_ENTRY_FIELDS = (
     "channel",
     "platform",
@@ -24,6 +25,11 @@ REQUIRED_ENTRY_FIELDS = (
     "downloadUrl",
     "sha256",
     "notes",
+)
+REQUIRED_VARIANT_FIELDS = (
+    "packageType",
+    "downloadUrl",
+    "sha256",
 )
 
 
@@ -59,6 +65,116 @@ def _require_int(value: Any, path: str) -> int:
     return value
 
 
+def _validate_package_type(value: Any, path: str) -> str:
+    package_type = _require_non_empty_string(value, path).lower()
+    if package_type not in ALLOWED_PACKAGE_TYPES:
+        raise ManifestGenerationError(
+            f'"{path}" 仅支持: {", ".join(ALLOWED_PACKAGE_TYPES)}。'
+        )
+    return package_type
+
+
+def _validate_sha256(value: Any, path: str) -> str:
+    sha256 = _require_non_empty_string(value, path).lower()
+    if len(sha256) != 64 or any(ch not in "0123456789abcdef" for ch in sha256):
+        raise ManifestGenerationError(
+            f'"{path}" 必须是 64 位十六进制字符串。'
+        )
+    return sha256
+
+
+def _validate_download_url(
+    value: Any,
+    *,
+    version: str,
+    build_number: int,
+    path: str,
+) -> str:
+    download_url = _require_non_empty_string(value, path)
+    if "://" not in download_url:
+        raise ManifestGenerationError(f'"{path}" 必须是绝对 URL。')
+
+    _validate_download_url_metadata(
+        version=version,
+        build_number=build_number,
+        download_url=download_url,
+        path=path,
+    )
+    return download_url
+
+
+def _normalize_android_abi(value: str) -> str:
+    normalized = value.strip().lower().replace("_", "-")
+    mapping = {
+        "arm64": "arm64-v8a",
+        "arm64v8a": "arm64-v8a",
+        "arm64-v8a": "arm64-v8a",
+        "aarch64": "arm64-v8a",
+        "armeabi": "armeabi-v7a",
+        "armeabi-v7a": "armeabi-v7a",
+        "arm-v7a": "armeabi-v7a",
+        "armv7": "armeabi-v7a",
+        "android-arm": "armeabi-v7a",
+    }
+    return mapping.get(normalized, normalized)
+
+
+def _validate_variants(
+    value: Any,
+    *,
+    version: str,
+    build_number: int,
+    path: str,
+) -> dict[str, dict[str, Any]]:
+    if value is None:
+        return {}
+
+    variants = _require_object(value, f"{path}.variants")
+    normalized_variants: dict[str, dict[str, Any]] = {}
+    for raw_abi, raw_variant in variants.items():
+        if not isinstance(raw_abi, str):
+            raise ManifestGenerationError(
+                f'"{path}.variants" 的键必须是字符串。'
+            )
+
+        normalized_abi = _normalize_android_abi(raw_abi)
+        if normalized_abi not in ALLOWED_ANDROID_ABIS:
+            raise ManifestGenerationError(
+                f'"{path}.variants.{raw_abi}" 仅支持: '
+                f'{", ".join(ALLOWED_ANDROID_ABIS)}。'
+            )
+        if normalized_abi in normalized_variants:
+            raise ManifestGenerationError(
+                f'"{path}.variants.{normalized_abi}" 重复。'
+            )
+
+        variant = _require_object(raw_variant, f"{path}.variants.{normalized_abi}")
+        for field in REQUIRED_VARIANT_FIELDS:
+            if field not in variant:
+                raise ManifestGenerationError(
+                    f'"{path}.variants.{normalized_abi}.{field}" 缺失。'
+                )
+
+        normalized_variants[normalized_abi] = {
+            "packageType": _validate_package_type(
+                variant["packageType"],
+                f"{path}.variants.{normalized_abi}.packageType",
+            ),
+            "downloadUrl": _validate_download_url(
+                variant["downloadUrl"],
+                version=version,
+                build_number=build_number,
+                path=f"{path}.variants.{normalized_abi}.downloadUrl",
+            ),
+            "sha256": _validate_sha256(
+                variant["sha256"],
+                f"{path}.variants.{normalized_abi}.sha256",
+            ),
+        }
+
+    return normalized_variants
+
+
 def _validate_entry(entry: dict[str, Any], index: int) -> dict[str, Any]:
     path = f"entries[{index}]"
 
@@ -78,47 +194,38 @@ def _validate_entry(entry: dict[str, Any], index: int) -> dict[str, Any]:
             f'"{path}.platform" 仅支持: {", ".join(ALLOWED_PLATFORMS)}。'
         )
 
-    package_type = _require_non_empty_string(
-        entry["packageType"],
-        f"{path}.packageType",
-    ).lower()
-    if package_type not in ALLOWED_PACKAGE_TYPES:
-        raise ManifestGenerationError(
-            f'"{path}.packageType" 仅支持: {", ".join(ALLOWED_PACKAGE_TYPES)}。'
-        )
-
-    sha256 = _require_non_empty_string(entry["sha256"], f"{path}.sha256").lower()
-    if len(sha256) != 64 or any(ch not in "0123456789abcdef" for ch in sha256):
-        raise ManifestGenerationError(
-            f'"{path}.sha256" 必须是 64 位十六进制字符串。'
-        )
-
-    download_url = _require_non_empty_string(
-        entry["downloadUrl"],
-        f"{path}.downloadUrl",
-    )
-    if "://" not in download_url:
-        raise ManifestGenerationError(f'"{path}.downloadUrl" 必须是绝对 URL。')
-
     version = _require_non_empty_string(entry["version"], f"{path}.version")
     build_number = _require_int(entry["buildNumber"], f"{path}.buildNumber")
-    _validate_download_url_metadata(
-        version=version,
-        build_number=build_number,
-        download_url=download_url,
-        path=path,
-    )
 
-    return {
+    validated_entry = {
         "channel": channel,
         "platform": platform,
         "version": version,
         "buildNumber": build_number,
-        "packageType": package_type,
-        "downloadUrl": download_url,
-        "sha256": sha256,
+        "packageType": _validate_package_type(
+            entry["packageType"],
+            f"{path}.packageType",
+        ),
+        "downloadUrl": _validate_download_url(
+            entry["downloadUrl"],
+            version=version,
+            build_number=build_number,
+            path=f"{path}.downloadUrl",
+        ),
+        "sha256": _validate_sha256(entry["sha256"], f"{path}.sha256"),
         "notes": _require_non_empty_string(entry["notes"], f"{path}.notes"),
     }
+
+    variants = _validate_variants(
+        entry.get("variants"),
+        version=version,
+        build_number=build_number,
+        path=path,
+    )
+    if variants:
+        validated_entry["variants"] = variants
+
+    return validated_entry
 
 
 def _validate_download_url_metadata(
@@ -129,19 +236,19 @@ def _validate_download_url_metadata(
     path: str,
 ) -> None:
     version_match = re.search(
-        r"v(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)",
+        r"v(\d+\.\d+\.\d+(?:-(?!build)[0-9A-Za-z.]+)?)(?=-build|[^0-9A-Za-z.]|$)",
         download_url,
         re.IGNORECASE,
     )
     if version_match and version_match.group(1) != version:
         raise ManifestGenerationError(
-            f'"{path}.downloadUrl" 中的版本号与 "{path}.version" 不一致。'
+            f'"{path}" 中的版本号与目标版本不一致。'
         )
 
     build_match = re.search(r"build[_-]?(\d+)", download_url, re.IGNORECASE)
     if build_match and int(build_match.group(1)) != build_number:
         raise ManifestGenerationError(
-            f'"{path}.downloadUrl" 中的 build 号与 "{path}.buildNumber" 不一致。'
+            f'"{path}" 中的 build 号与目标 build 不一致。'
         )
 
 
@@ -166,7 +273,7 @@ def build_manifest(input_data: dict[str, Any]) -> dict[str, Any]:
             )
         seen_targets.add(target_key)
 
-        channels[entry["channel"]][entry["platform"]] = {
+        manifest_entry = {
             "version": entry["version"],
             "buildNumber": entry["buildNumber"],
             "packageType": entry["packageType"],
@@ -174,6 +281,10 @@ def build_manifest(input_data: dict[str, Any]) -> dict[str, Any]:
             "sha256": entry["sha256"],
             "notes": entry["notes"],
         }
+        if "variants" in entry:
+            manifest_entry["variants"] = entry["variants"]
+
+        channels[entry["channel"]][entry["platform"]] = manifest_entry
 
     return {
         "schemaVersion": schema_version,

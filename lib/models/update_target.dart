@@ -1,17 +1,12 @@
-enum UpdateChannel {
-  stable,
-  beta,
-}
+enum UpdateChannel { stable, beta }
 
-enum UpdatePlatform {
-  android,
-  windows,
-}
+enum UpdatePlatform { android, windows }
 
 class UpdateTarget {
   final UpdateChannel channel;
   final UpdateChannel? resolvedTargetChannel;
   final UpdatePlatform platform;
+  final String? abi;
   final String? version;
   final int? buildNumber;
   final String? packageType;
@@ -23,6 +18,7 @@ class UpdateTarget {
     required this.channel,
     this.resolvedTargetChannel,
     required this.platform,
+    this.abi,
     this.version,
     this.buildNumber,
     this.packageType,

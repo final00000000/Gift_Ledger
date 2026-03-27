@@ -32,10 +32,10 @@ Android / Windows 版本现已支持 **App 内置更新检查**。
 
 | 平台 | 下载链接 | 说明 |
 |------|----------|------|
-| **Android** | [📦 APK 下载](https://github.com/final00000000/Gift_Ledger/releases/latest) | 支持 App 内手动检查与启动后自动检查更新 |
+| **Android** | [📦 APK 下载](https://github.com/final00000000/Gift_Ledger/releases/latest) | 支持 App 内更新；Release 仅提供 ARMv7 / ARM64 两种 APK，不再提供 x86 / x86_64 包 |
 | **Windows** | [📦 EXE 安装器下载](https://github.com/final00000000/Gift_Ledger/releases/latest) | 推荐使用安装器升级，支持 App 内拉起安装流程 |
 | **Web** | [📦 ZIP 下载](https://github.com/final00000000/Gift_Ledger/releases/latest) | 部署到静态托管 |
-| **iOS** | 暂无预编译版本 | 需自行构建（见 [BUILD.md](./BUILD.md)） |
+| **iOS** | 暂无常驻预编译版本 | 可通过 GitHub Actions 生成 IPA artifact，但签名材料需自行准备（见 [BUILD.md](./BUILD.md)） |
 
 ---
 
@@ -97,7 +97,7 @@ Android / Windows 版本现已支持 **App 内置更新检查**。
 - ✨ 添加记录页支持多行备注、字数限制与更稳定的备注保存
 - ✨ 设置页 / 关于页整合更新入口，支持红点提示与版本忽略
 - 🐛 修复取消安装后二次拉起、Windows 安装器构建失败等更新链路问题
-- 📦 统一 Android / Windows 发布产物命名、版本规则与更新清单生成
+- 📦 统一 Android / Windows 发布产物命名、版本规则与更新清单生成，并收敛 Android 发布架构
 
 **v1.2.8 (2026-02-28)**
 - 设置页顶部添加 GitHub 跳转按钮
