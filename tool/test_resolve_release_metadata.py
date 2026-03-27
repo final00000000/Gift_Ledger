@@ -76,6 +76,16 @@ class ResolveReleaseMetadataTest(unittest.TestCase):
             'gift_ledger-stable-android-v1.3.2-build1030299-arm64-v8a.apk',
         )
 
+    def test_unsupported_platform_is_rejected(self) -> None:
+        with self.assertRaisesRegex(ValueError, 'Unsupported platform'):
+            MODULE.build_asset_names(
+                app_name='gift_ledger',
+                channel='stable',
+                platform='ios',
+                semver='1.3.2',
+                build_number=1030299,
+            )
+
 
 if __name__ == '__main__':
     unittest.main()
