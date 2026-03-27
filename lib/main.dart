@@ -36,9 +36,9 @@ void main() async {
 
   // 设置系统UI样式 - 沉浸式状态栏，与应用背景色一致
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-    statusBarColor: Color(0xFFFAF8F5), // AppTheme.backgroundColor（温暖米白）
+    statusBarColor: Color(0xFFFAF8F5),
     statusBarIconBrightness: Brightness.dark,
-    statusBarBrightness: Brightness.light,
+    statusBarBrightness: Brightness.dark,
     systemNavigationBarColor: Color(0xFFFAF8F5),
     systemNavigationBarIconBrightness: Brightness.dark,
   ));

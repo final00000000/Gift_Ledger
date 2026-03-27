@@ -108,6 +108,16 @@ class UpdateController extends ChangeNotifier {
   }
 
   Future<void> checkForUpdates({required UpdateCheckSource source}) async {
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) {
+      _clearPendingInstallTracking();
+      _state = UpdateState(
+        status: UpdateStateStatus.upToDate,
+        lastSource: source,
+      );
+      notifyListeners();
+      return;
+    }
+
     final requestEpoch = ++_checkRequestEpoch;
     final previousState = _state;
 

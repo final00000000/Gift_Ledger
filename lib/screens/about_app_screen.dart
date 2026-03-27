@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:provider/provider.dart';
@@ -97,6 +99,7 @@ class _AboutAppScreenState extends State<AboutAppScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isIos = Platform.isIOS;
     final updateController = context.watch<UpdateController>();
     final updateState = updateController.state;
     final updateTarget = updateState.target;
@@ -115,27 +118,67 @@ class _AboutAppScreenState extends State<AboutAppScreen> {
         children: [
           _AboutHeader(versionLabel: _versionLabel),
           const SizedBox(height: 16),
-          UpdateSettingsSection(
-            currentVersion: widget.currentVersion,
-            status: updateState.status,
-            lastSource: updateState.lastSource,
-            target: updateTarget,
-            onCheckPressed: () => _handleManualUpdateCheck(updateController),
-            onInstallPressed: () =>
-                _handleInstallCurrentUpdate(updateController),
-            error: updateState.error,
-            installResult: updateState.installResult,
-            downloadProgress: updateState.downloadProgress,
-          ),
-          const SizedBox(height: 12),
-          UpdateChannelSection(
-            selectedChannel: updateController.selectedChannel,
-            enabled: !updateBusy,
-            onBetaChanged: (enabled) {
-              _handleUpdateChannelChanged(updateController, enabled);
-            },
-          ),
-          if (updateTarget?.notes.trim().isNotEmpty ?? false) ...[
+          if (isIos)
+            Container(
+              decoration: BoxDecoration(
+                color: Theme.of(context).cardColor,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.black.withValues(alpha: 0.04)),
+              ),
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'iOS 版本说明',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    '当前 iOS 版本不支持应用内检查更新。你可以前往 GitHub 查看最新发布，并重新下载最新 IPA。',
+                    style: TextStyle(
+                      fontSize: 13,
+                      height: 1.5,
+                      color: AppTheme.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  OutlinedButton.icon(
+                    onPressed: _openGithub,
+                    icon: const Icon(Icons.open_in_new_rounded, size: 18),
+                    label: const Text('前往 GitHub 查看发布'),
+                  ),
+                ],
+              ),
+            )
+          else
+            UpdateSettingsSection(
+              currentVersion: widget.currentVersion,
+              status: updateState.status,
+              lastSource: updateState.lastSource,
+              target: updateTarget,
+              onCheckPressed: () => _handleManualUpdateCheck(updateController),
+              onInstallPressed: () =>
+                  _handleInstallCurrentUpdate(updateController),
+              error: updateState.error,
+              installResult: updateState.installResult,
+              downloadProgress: updateState.downloadProgress,
+            ),
+          if (!isIos) ...[
+            const SizedBox(height: 12),
+            UpdateChannelSection(
+              selectedChannel: updateController.selectedChannel,
+              enabled: !updateBusy,
+              onBetaChanged: (enabled) {
+                _handleUpdateChannelChanged(updateController, enabled);
+              },
+            ),
+          ],
+          if (!isIos && (updateTarget?.notes.trim().isNotEmpty ?? false)) ...[
             const SizedBox(height: 12),
             UpdateReleaseNotesSection(notes: updateTarget!.notes),
           ],

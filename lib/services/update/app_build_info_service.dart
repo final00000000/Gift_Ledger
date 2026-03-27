@@ -28,12 +28,8 @@ class AppBuildInfoService {
 
   Future<AppBuildInfo> getCurrentBuildInfo() async {
     final packageInfo = await PackageInfo.fromPlatform();
-    final buildNumber = int.tryParse(packageInfo.buildNumber);
-    if (buildNumber == null) {
-      throw FormatException(
-        'Invalid app build number: ${packageInfo.buildNumber}',
-      );
-    }
+    final version = packageInfo.version.trim().isEmpty ? '0.0.0' : packageInfo.version.trim();
+    final buildNumber = int.tryParse(packageInfo.buildNumber) ?? 0;
 
     final platform = _resolvePlatform();
     final androidAbi = platform == UpdatePlatform.android
@@ -41,7 +37,7 @@ class AppBuildInfoService {
         : null;
 
     return AppBuildInfo(
-      version: packageInfo.version,
+      version: version,
       buildNumber: buildNumber,
       platform: platform,
       androidAbi: androidAbi,
@@ -70,9 +66,7 @@ class AppBuildInfoService {
       case TargetPlatform.windows:
         return UpdatePlatform.windows;
       default:
-        throw UnsupportedError(
-          'App updates are only supported on Android and Windows.',
-        );
+        return UpdatePlatform.android; // iOS 等平台暂不支持自动更新，返回占位值
     }
   }
 }
