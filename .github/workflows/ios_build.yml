@@ -19,12 +19,26 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Build IPA (no codesign)
-        run: flutter build ipa --no-codesign --release
+      - name: Build iOS archive (no codesign)
+        run: flutter build ios --no-codesign --release
+
+      - name: Export unsigned IPA from archive
+        run: |
+          mkdir -p build/ios/unsigned
+          # Find the app bundle in DerivedData or build dir
+          APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "Runner.app" -path "*/Release-iphoneos/*" 2>/dev/null | head -1)
+          if [ -z "$APP_PATH" ]; then
+            APP_PATH=$(find . -name "Runner.app" -path "*/Release-iphoneos/*" 2>/dev/null | head -1)
+          fi
+          echo "Found app at: $APP_PATH"
+          mkdir -p Payload
+          cp -r "$APP_PATH" Payload/
+          zip -r build/ios/unsigned/gift_ledger_unsigned.ipa Payload
+          rm -rf Payload
 
       - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
         with:
           name: gift-ledger-ios-${{ github.sha }}
-          path: build/ios/ipa/*.ipa
+          path: build/ios/unsigned/*.ipa
           retention-days: 7
