@@ -273,7 +273,8 @@ void main() {
               'body': 'Beta 发布说明',
               'assets': [
                 {
-                  'name': 'gift_ledger-beta-android-v1.3.1-beta.2-build1030102.apk',
+                  'name':
+                      'gift_ledger-beta-android-v1.3.1-beta.2-build1030102.apk',
                   'browser_download_url':
                       'https://github.com/final00000000/Gift_Ledger/releases/download/v1.3.1-beta.2/gift_ledger-beta-android-v1.3.1-beta.2-build1030102.apk',
                   'digest':

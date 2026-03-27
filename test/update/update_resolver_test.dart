@@ -9,12 +9,8 @@ UpdateManifest _buildManifest({
   required Map<String, dynamic>? betaWindows,
 }) {
   return UpdateManifest.fromJson({
-    'stable': {
-      'windows': stableWindows,
-    },
-    'beta': {
-      'windows': betaWindows,
-    },
+    'stable': {'windows': stableWindows},
+    'beta': {'windows': betaWindows},
   });
 }
 
@@ -76,12 +72,11 @@ void main() {
       expect(target?.version, '1.3.1');
       expect(target?.buildNumber, 15);
       expect(target?.packageType, 'exe');
-      expect(target?.downloadUrl,
-          'https://example.com/stable/GiftLedgerSetup.exe');
       expect(
-        buildUpdateTargetKey(target!),
-        'stable@windows@1.3.1@15',
+        target?.downloadUrl,
+        'https://example.com/stable/GiftLedgerSetup.exe',
       );
+      expect(buildUpdateTargetKey(target!), 'stable@windows@1.3.1@15');
     });
 
     test('beta 用户有更高 beta 时优先 beta', () {
@@ -153,6 +148,62 @@ void main() {
       expect(target?.resolvedTargetChannel, UpdateChannel.stable);
       expect(target?.version, '1.3.1');
       expect(target?.buildNumber, 15);
+    });
+
+    test('android 更新优先选择当前设备 ABI 对应的安装包', () {
+      final manifest = UpdateManifest.fromJson({
+        'channels': {
+          'stable': {
+            'android': {
+              'version': '1.3.2',
+              'buildNumber': 1030299,
+              'downloadUrl':
+                  'https://example.com/gift_ledger-stable-android-v1.3.2-build1030299-arm64-v8a.apk',
+              'sha256':
+                  'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+              'packageType': 'apk',
+              'notes': 'Android stable',
+              'variants': {
+                'armeabi-v7a': {
+                  'downloadUrl':
+                      'https://example.com/gift_ledger-stable-android-v1.3.2-build1030299-armeabi-v7a.apk',
+                  'sha256':
+                      'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+                  'packageType': 'apk',
+                },
+                'arm64-v8a': {
+                  'downloadUrl':
+                      'https://example.com/gift_ledger-stable-android-v1.3.2-build1030299-arm64-v8a.apk',
+                  'sha256':
+                      'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
+                  'packageType': 'apk',
+                },
+              },
+            },
+          },
+          'beta': {},
+        },
+      });
+
+      final target = resolver.resolve(
+        manifest: manifest,
+        selectedChannel: UpdateChannel.stable,
+        platform: UpdatePlatform.android,
+        currentVersion: '1.3.1',
+        currentBuildNumber: 1030199,
+        currentAbi: 'armeabi-v7a',
+      );
+
+      expect(target, isNotNull);
+      expect(target?.abi, 'armeabi-v7a');
+      expect(
+        target?.downloadUrl,
+        'https://example.com/gift_ledger-stable-android-v1.3.2-build1030299-armeabi-v7a.apk',
+      );
+      expect(
+        target?.sha256,
+        'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      );
     });
 
     test('当前版本已不低于目标版本时返回 null', () {

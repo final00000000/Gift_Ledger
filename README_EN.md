@@ -32,10 +32,10 @@ English | [简体中文](./README.md)
 
 | Platform | Link | Notes |
 |----------|------|------|
-| **Android** | [📦 APK Download](https://github.com/final00000000/Gift_Ledger/releases/latest) | Supports auto-check and manual in-app update checks |
+| **Android** | [📦 APK Download](https://github.com/final00000000/Gift_Ledger/releases/latest) | Supports in-app updates; Releases only include ARMv7 / ARM64 APKs and exclude x86 / x86_64 |
 | **Windows** | [📦 EXE Installer Download](https://github.com/final00000000/Gift_Ledger/releases/latest) | Recommended for upgrade and in-app installer handoff |
 | **Web** | [📦 ZIP Download](https://github.com/final00000000/Gift_Ledger/releases/latest) | Deploy to static hosting |
-| **iOS** | No prebuilt package | Build it yourself (see [docs/BUILD_EN.md](./docs/BUILD_EN.md)) |
+| **iOS** | No always-on prebuilt package | GitHub Actions can build an IPA artifact, but you must provide your own signing assets (see [docs/BUILD_EN.md](./docs/BUILD_EN.md)) |
 
 ---
 
@@ -90,7 +90,7 @@ Details: [docs/FEATURES_EN.md](./docs/FEATURES_EN.md)
 - ✨ Improve note input with multiline support, length limit, and better save flow
 - ✨ Integrate update entry points in Settings / About with ignore-version and red-dot reminders
 - 🐛 Fix repeated installer relaunch after cancel and stabilize Windows installer publishing
-- 📦 Unify Android / Windows artifact naming, version rules, and update manifest generation
+- 📦 Unify Android / Windows artifact naming, version rules, update manifest generation, and Android ABI publishing rules
 
 **v1.2.8 (2026-02-28)**
 - Add GitHub shortcut in Settings

@@ -17,6 +17,7 @@ import java.io.IOException
 class MainActivity: FlutterActivity() {
     private val fileSaverChannelName = "com.giftmoney.gift_ledger/file_saver"
     private val appInstallerChannelName = "com.giftmoney.gift_ledger/app_installer"
+    private val appInfoChannelName = "com.giftmoney.gift_ledger/app_info"
     private val requestCodeCreateDocument = 43411
 
     private var pendingResult: MethodChannel.Result? = null
@@ -45,6 +46,22 @@ class MainActivity: FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, appInfoChannelName)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "getPreferredAbi" -> result.success(getPreferredAbi())
+                    else -> result.notImplemented()
+                }
+            }
+    }
+
+    private fun getPreferredAbi(): String? {
+        val supportedAbis = Build.SUPPORTED_ABIS ?: return null
+        return supportedAbis.firstOrNull { abi ->
+            abi.equals("arm64-v8a", ignoreCase = true) ||
+                abi.equals("armeabi-v7a", ignoreCase = true)
+        } ?: supportedAbis.firstOrNull()
     }
 
     private fun handleOpenInstallPermissionSettings(result: MethodChannel.Result) {

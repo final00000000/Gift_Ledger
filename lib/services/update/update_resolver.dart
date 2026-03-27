@@ -11,6 +11,7 @@ class UpdateResolver {
     required UpdatePlatform platform,
     required String currentVersion,
     int? currentBuildNumber,
+    String? currentAbi,
   }) {
     switch (selectedChannel) {
       case UpdateChannel.stable:
@@ -21,6 +22,7 @@ class UpdateResolver {
           platform: platform,
           currentVersion: currentVersion,
           currentBuildNumber: currentBuildNumber,
+          currentAbi: currentAbi,
         );
       case UpdateChannel.beta:
         final betaTarget = _resolveTarget(
@@ -30,6 +32,7 @@ class UpdateResolver {
           platform: platform,
           currentVersion: currentVersion,
           currentBuildNumber: currentBuildNumber,
+          currentAbi: currentAbi,
         );
         if (betaTarget != null) {
           return betaTarget;
@@ -42,6 +45,7 @@ class UpdateResolver {
           platform: platform,
           currentVersion: currentVersion,
           currentBuildNumber: currentBuildNumber,
+          currentAbi: currentAbi,
         );
     }
   }
@@ -53,6 +57,7 @@ class UpdateResolver {
     required UpdatePlatform platform,
     required String currentVersion,
     required int? currentBuildNumber,
+    String? currentAbi,
   }) {
     if (!_isHigherThanCurrent(
       entry,
@@ -66,11 +71,14 @@ class UpdateResolver {
       channel: selectedChannel,
       resolvedTargetChannel: resolvedTargetChannel,
       platform: platform,
+      abi: platform == UpdatePlatform.android
+          ? entry!.resolveAbi(preferredAbi: currentAbi)
+          : null,
       version: entry!.version,
       buildNumber: entry.buildNumber,
-      packageType: entry.packageType,
-      downloadUrl: entry.downloadUrl,
-      sha256: entry.sha256,
+      packageType: entry.resolvePackageType(preferredAbi: currentAbi),
+      downloadUrl: entry.resolveDownloadUrl(preferredAbi: currentAbi),
+      sha256: entry.resolveSha256(preferredAbi: currentAbi),
       notes: entry.notes,
     );
   }

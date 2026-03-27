@@ -69,26 +69,47 @@ jobs:
             --ref-name "${REF_NAME}" \
             --platform android \
             --github-output "${GITHUB_OUTPUT}"
+
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Build Android APK
-        run: >
-          flutter build apk --release
-          --build-name "${{ steps.meta.outputs.semver }}"
-          --build-number "${{ steps.meta.outputs.build_number }}"
+      - name: Build Android split APKs
+        run: |
+          flutter build apk \
+            --release \
+            --split-per-abi \
+            --target-platform android-arm,android-arm64 \
+            --build-name "${{ steps.meta.outputs.semver }}" \
+            --build-number "${{ steps.meta.outputs.build_number }}"
 
-      - name: Prepare Android asset
+      - name: Prepare Android assets
         id: asset
         shell: bash
+        env:
+          ARMV7_NAME: ${{ steps.meta.outputs.asset_name_armeabi_v7a }}
+          ARM64_NAME: ${{ steps.meta.outputs.asset_name_arm64_v8a }}
         run: |
           set -euo pipefail
           mkdir -p build/release-assets build/release-metadata
-          asset_path="build/release-assets/${{ steps.meta.outputs.asset_name }}"
-          cp build/app/outputs/flutter-apk/app-release.apk "$asset_path"
-          sha256="$(sha256sum "$asset_path" | awk '{print $1}')"
-          echo "asset_path=$asset_path" >> "$GITHUB_OUTPUT"
-          echo "sha256=$sha256" >> "$GITHUB_OUTPUT"
+
+          armv7_source="build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk"
+          arm64_source="build/app/outputs/flutter-apk/app-arm64-v8a-release.apk"
+
+          armv7_asset_path="build/release-assets/${ARMV7_NAME}"
+          arm64_asset_path="build/release-assets/${ARM64_NAME}"
+
+          cp "$armv7_source" "$armv7_asset_path"
+          cp "$arm64_source" "$arm64_asset_path"
+
+          armv7_sha256="$(sha256sum "$armv7_asset_path" | awk '{print $1}')"
+          arm64_sha256="$(sha256sum "$arm64_asset_path" | awk '{print $1}')"
+
+          {
+            echo "armv7_asset_path=$armv7_asset_path"
+            echo "arm64_asset_path=$arm64_asset_path"
+            echo "armv7_sha256=$armv7_sha256"
+            echo "arm64_sha256=$arm64_sha256"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Ensure Release exists
         shell: bash
@@ -104,31 +125,32 @@ jobs:
             exit 0
           fi
 
-          prerelease_flag=""
+          args=(release create "$RELEASE_TAG" --title "Gift Ledger ${RELEASE_TAG}")
           if [ "$CHANNEL" = "beta" ]; then
-            prerelease_flag="--prerelease"
+            args+=(--prerelease)
           fi
 
           notes="${RELEASE_NOTES:-}"
           if [ -z "$notes" ]; then
             notes="Gift Ledger ${CHANNEL} ${RELEASE_TAG}"
           fi
+          args+=(--notes "$notes")
 
-          gh release create "$RELEASE_TAG" \
-            --title "Gift Ledger ${RELEASE_TAG}" \
-            $prerelease_flag \
-            --notes "$notes" || gh release view "$RELEASE_TAG"
+          gh "${args[@]}" || gh release view "$RELEASE_TAG"
 
-      - name: Upload Android asset to Release
+      - name: Upload Android assets to Release
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ steps.meta.outputs.release_tag }}
-          ASSET_NAME: ${{ steps.meta.outputs.asset_name }}
-          ASSET_PATH: ${{ steps.asset.outputs.asset_path }}
+          ARMV7_ASSET_NAME: ${{ steps.meta.outputs.asset_name_armeabi_v7a }}
+          ARM64_ASSET_NAME: ${{ steps.meta.outputs.asset_name_arm64_v8a }}
+          ARMV7_ASSET_PATH: ${{ steps.asset.outputs.armv7_asset_path }}
+          ARM64_ASSET_PATH: ${{ steps.asset.outputs.arm64_asset_path }}
         run: |
           set -euo pipefail
-          gh release upload "$RELEASE_TAG" "$ASSET_PATH#$ASSET_NAME" --clobber
+          gh release upload "$RELEASE_TAG" "$ARMV7_ASSET_PATH#$ARMV7_ASSET_NAME" --clobber
+          gh release upload "$RELEASE_TAG" "$ARM64_ASSET_PATH#$ARM64_ASSET_NAME" --clobber
 
       - name: Write Android metadata
         shell: bash
@@ -137,8 +159,10 @@ jobs:
           VERSION: ${{ steps.meta.outputs.semver }}
           BUILD_NUMBER: ${{ steps.meta.outputs.build_number }}
           RELEASE_TAG: ${{ steps.meta.outputs.release_tag }}
-          ASSET_NAME: ${{ steps.meta.outputs.asset_name }}
-          SHA256: ${{ steps.asset.outputs.sha256 }}
+          ARMV7_ASSET_NAME: ${{ steps.meta.outputs.asset_name_armeabi_v7a }}
+          ARM64_ASSET_NAME: ${{ steps.meta.outputs.asset_name_arm64_v8a }}
+          ARMV7_SHA256: ${{ steps.asset.outputs.armv7_sha256 }}
+          ARM64_SHA256: ${{ steps.asset.outputs.arm64_sha256 }}
           RELEASE_NOTES: ${{ github.event.inputs.release_notes }}
           REPOSITORY: ${{ github.repository }}
         run: |
@@ -147,25 +171,42 @@ jobs:
           import os
           import pathlib
 
-          notes = (os.environ.get("RELEASE_NOTES") or "").strip()
+          notes = (os.environ.get('RELEASE_NOTES') or '').strip()
           if not notes:
               notes = f"Android {os.environ['CHANNEL']} {os.environ['VERSION']}"
 
+          base_download_url = (
+              f"https://github.com/{os.environ['REPOSITORY']}/releases/download/"
+              f"{os.environ['RELEASE_TAG']}"
+          )
           metadata = {
-              "channel": os.environ["CHANNEL"],
-              "platform": "android",
-              "version": os.environ["VERSION"],
-              "buildNumber": int(os.environ["BUILD_NUMBER"]),
-              "packageType": "apk",
-              "downloadUrl": f"https://github.com/{os.environ['REPOSITORY']}/releases/download/{os.environ['RELEASE_TAG']}/{os.environ['ASSET_NAME']}",
-              "sha256": os.environ["SHA256"],
-              "notes": notes,
+              'channel': os.environ['CHANNEL'],
+              'platform': 'android',
+              'version': os.environ['VERSION'],
+              'buildNumber': int(os.environ['BUILD_NUMBER']),
+              'packageType': 'apk',
+              # 顶层入口固定指向 arm64-v8a，split 变体通过 variants 暴露。
+              'downloadUrl': f"{base_download_url}/{os.environ['ARM64_ASSET_NAME']}",
+              'sha256': os.environ['ARM64_SHA256'],
+              'notes': notes,
+              'variants': {
+                  'armeabi-v7a': {
+                      'packageType': 'apk',
+                      'downloadUrl': f"{base_download_url}/{os.environ['ARMV7_ASSET_NAME']}",
+                      'sha256': os.environ['ARMV7_SHA256'],
+                  },
+                  'arm64-v8a': {
+                      'packageType': 'apk',
+                      'downloadUrl': f"{base_download_url}/{os.environ['ARM64_ASSET_NAME']}",
+                      'sha256': os.environ['ARM64_SHA256'],
+                  },
+              },
           }
 
-          path = pathlib.Path("build/release-metadata/android.json")
+          path = pathlib.Path('build/release-metadata/android.json')
           path.write_text(
-              json.dumps(metadata, ensure_ascii=False, indent=2) + "\n",
-              encoding="utf-8",
+              json.dumps(metadata, ensure_ascii=False, indent=2) + '\n',
+              encoding='utf-8',
           )
           PY
 
@@ -191,6 +232,7 @@ jobs:
         with:
           channel: stable
           cache: true
+
       - name: Resolve release metadata
         id: meta
         shell: pwsh
@@ -208,14 +250,15 @@ jobs:
             --ref-name "$env:REF_NAME" `
             --platform windows `
             --github-output "$env:GITHUB_OUTPUT"
+
       - name: Install dependencies
         run: flutter pub get
 
       - name: Build Windows release
-        run: >
-          flutter build windows --release
-          --build-name "${{ steps.meta.outputs.semver }}"
-          --build-number "${{ steps.meta.outputs.build_number }}"
+        run: |
+          flutter build windows --release \
+            --build-name "${{ steps.meta.outputs.semver }}" \
+            --build-number "${{ steps.meta.outputs.build_number }}"
 
       - name: Install Inno Setup
         run: choco install innosetup --no-progress -y

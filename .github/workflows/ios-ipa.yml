@@ -1,0 +1,149 @@
+name: Build iOS IPA (Bring Your Own Signing Assets)
+
+on:
+  workflow_dispatch:
+    inputs:
+      export_method:
+        description: IPA 导出方式（需与 ExportOptions.plist 一致）
+        required: true
+        type: choice
+        default: ad-hoc
+        options:
+          - ad-hoc
+          - development
+          - enterprise
+          - app-store
+      build_name:
+        description: 可选，覆盖 pubspec 中的版本号（例如 1.3.2）
+        required: false
+        type: string
+      build_number:
+        description: 可选，覆盖 pubspec 中的 build number（例如 1030299）
+        required: false
+        type: string
+      artifact_name:
+        description: 产物名称
+        required: true
+        default: gift-ledger-ios-ipa
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build signed iOS IPA with user-provided signing assets
+    runs-on: macos-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Explain signing responsibility
+        run: |
+          echo "This workflow only uses signing assets you provide."
+          echo "Prepare your own Apple certificate (.p12), provisioning profile, and ExportOptions.plist before running it."
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Decode signing assets
+        env:
+          IOS_P12_BASE64: ${{ secrets.IOS_P12_BASE64 }}
+          IOS_MOBILEPROVISION_BASE64: ${{ secrets.IOS_MOBILEPROVISION_BASE64 }}
+          IOS_EXPORT_OPTIONS_PLIST_BASE64: ${{ secrets.IOS_EXPORT_OPTIONS_PLIST_BASE64 }}
+        run: |
+          python - <<'PY' >> "$GITHUB_ENV"
+          import base64
+          import os
+          import pathlib
+
+          required = {
+              'IOS_P12_BASE64': ('ios_certificate.p12', 'IOS_CERTIFICATE_PATH'),
+              'IOS_MOBILEPROVISION_BASE64': ('ios_profile.mobileprovision', 'IOS_PROFILE_PATH'),
+              'IOS_EXPORT_OPTIONS_PLIST_BASE64': ('ExportOptions.plist', 'IOS_EXPORT_OPTIONS_PATH'),
+          }
+          runner_temp = pathlib.Path(os.environ['RUNNER_TEMP'])
+
+          for env_name, (file_name, output_name) in required.items():
+              raw_value = (os.environ.get(env_name) or '').strip()
+              if not raw_value:
+                  raise SystemExit(f'Missing required secret: {env_name}')
+              output_path = runner_temp / file_name
+              output_path.write_bytes(base64.b64decode(raw_value))
+              print(f'{output_name}={output_path}')
+          PY
+
+      - name: Configure temporary keychain
+        env:
+          IOS_P12_PASSWORD: ${{ secrets.IOS_P12_PASSWORD }}
+          IOS_KEYCHAIN_PASSWORD: ${{ secrets.IOS_KEYCHAIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          keychain_password="${IOS_KEYCHAIN_PASSWORD:-gift-ledger-ci}"
+          keychain_path="$RUNNER_TEMP/gift-ledger-signing.keychain-db"
+
+          security create-keychain -p "$keychain_password" "$keychain_path"
+          security set-keychain-settings -lut 21600 "$keychain_path"
+          security unlock-keychain -p "$keychain_password" "$keychain_path"
+          security list-keychains -d user -s "$keychain_path"
+          security default-keychain -d user -s "$keychain_path"
+          security import "$IOS_CERTIFICATE_PATH" \
+            -P "$IOS_P12_PASSWORD" \
+            -A \
+            -t cert \
+            -f pkcs12 \
+            -k "$keychain_path"
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s \
+            -k "$keychain_password" \
+            "$keychain_path"
+
+      - name: Install provisioning profile
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          cp "$IOS_PROFILE_PATH" \
+            "$HOME/Library/MobileDevice/Provisioning Profiles/gift_ledger.mobileprovision"
+
+      - name: Install CocoaPods dependencies
+        working-directory: ios
+        run: pod install
+
+      - name: Build signed IPA
+        env:
+          EXPORT_METHOD: ${{ inputs.export_method }}
+          BUILD_NAME: ${{ inputs.build_name }}
+          BUILD_NUMBER: ${{ inputs.build_number }}
+        run: |
+          set -euo pipefail
+          cmd=(flutter build ipa --release --export-options-plist="$IOS_EXPORT_OPTIONS_PATH")
+
+          if [ -n "${BUILD_NAME:-}" ]; then
+            cmd+=(--build-name="$BUILD_NAME")
+          fi
+          if [ -n "${BUILD_NUMBER:-}" ]; then
+            cmd+=(--build-number="$BUILD_NUMBER")
+          fi
+
+          echo "Using export method: $EXPORT_METHOD"
+          echo "Signing assets are user-provided by repository secrets."
+          "${cmd[@]}"
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: |
+            build/ios/ipa/*.ipa
+            build/ios/archive/*.xcarchive
+          if-no-files-found: error

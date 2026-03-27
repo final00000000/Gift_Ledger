@@ -8,9 +8,7 @@ import '../config_service.dart';
 import 'update_keys.dart';
 
 typedef UpdateManifestFetcher = Future<Object?> Function(
-  String url,
-  Options options,
-);
+    String url, Options options);
 
 class UpdateRepository {
   // Release 包默认走正式 manifest；debug 包默认走测试 manifest，
@@ -61,7 +59,7 @@ class UpdateRepository {
       ];
 
   static final RegExp _versionPattern = RegExp(
-    r'v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)',
+    r'v?(\d+\.\d+\.\d+(?:-(?!build)[0-9A-Za-z.]+)?)(?=-build|[^0-9A-Za-z.]|$)',
     caseSensitive: false,
   );
   static final RegExp _buildNumberPattern = RegExp(
@@ -77,7 +75,6 @@ class UpdateRepository {
         _configService = configService ?? ConfigService() {
     _fetcher = fetcher ?? _defaultFetch;
   }
-
   final Dio _dio;
   final ConfigService _configService;
   late final UpdateManifestFetcher _fetcher;
@@ -102,7 +99,6 @@ class UpdateRepository {
         );
       }
     }
-
     try {
       final releaseFallbackJson = await _fetchManifestJsonFromReleasesApi();
       return _saveAndBuildManifest(releaseFallbackJson);
@@ -111,7 +107,6 @@ class UpdateRepository {
       lastStackTrace = stackTrace;
       debugPrint('UpdateRepository releases API fallback failed: $error');
     }
-
     try {
       final githubHtmlFallbackJson = await _fetchManifestJsonFromGithubHtml();
       return _saveAndBuildManifest(githubHtmlFallbackJson);
@@ -123,7 +118,6 @@ class UpdateRepository {
         debugPrint('UpdateRepository falling back to cached manifest.');
         return cachedManifest;
       }
-
       // 优先保留前一个远端失败原因，避免 HTML 兜底覆盖主因。
       Error.throwWithStackTrace(lastError, lastStackTrace);
     }
@@ -145,9 +139,9 @@ class UpdateRepository {
     final decoded = jsonDecode(rawJson);
     if (decoded is! List) {
       throw const FormatException(
-          'GitHub releases response must be a JSON list.');
+        'GitHub releases response must be a JSON list.',
+      );
     }
-
     final releases = decoded
         .whereType<Map>()
         .map((release) => Map<String, dynamic>.from(release))
@@ -187,24 +181,35 @@ class UpdateRepository {
         'GitHub HTML fallback did not contain any Android APK asset.',
       );
     }
-
     return {
       'schemaVersion': 1,
       'generatedAt': DateTime.now().toUtc().toIso8601String(),
       'channels': {
-        'stable': {
-          'android': androidEntry,
-        },
+        'stable': {'android': androidEntry},
         'beta': <String, dynamic>{},
       },
     };
+  }
+
+  Map<String, dynamic>? _selectLatestRelease(
+    List<Map<String, dynamic>> releases, {
+    required bool prerelease,
+  }) {
+    for (final release in releases) {
+      final isDraft = release['draft'] == true;
+      final isPrerelease = release['prerelease'] == true;
+      if (isDraft || isPrerelease != prerelease) {
+        continue;
+      }
+      return release;
+    }
+    return null;
   }
 
   Map<String, dynamic> _buildChannelJson(Map<String, dynamic>? release) {
     if (release == null) {
       return <String, dynamic>{};
     }
-
     final androidEntry = _buildAndroidEntryFromRelease(release);
     final result = <String, dynamic>{};
     if (androidEntry != null) {
@@ -220,7 +225,6 @@ class UpdateRepository {
     if (assets is! List) {
       return null;
     }
-
     final normalizedAssets = assets
         .whereType<Map>()
         .map((asset) => Map<String, dynamic>.from(asset))
@@ -231,30 +235,11 @@ class UpdateRepository {
     if (version == null || version.isEmpty) {
       return null;
     }
-
-    final apkAsset = _selectAndroidApkAsset(
-      normalizedAssets,
-      expectedVersion: version,
+    return _buildAndroidEntryFromAssets(
+      assets: normalizedAssets,
+      version: version,
+      notes: (release['body'] as String?)?.trim() ?? '',
     );
-    if (apkAsset == null) {
-      return null;
-    }
-
-    final downloadUrl = (apkAsset['browser_download_url'] as String?)?.trim();
-    final digest = (apkAsset['digest'] as String?)?.trim();
-    final sha256 = _extractSha256(digest);
-    if (downloadUrl == null || downloadUrl.isEmpty || sha256 == null) {
-      return null;
-    }
-
-    return {
-      'version': version,
-      'buildNumber': _extractBuildNumber(apkAsset),
-      'downloadUrl': downloadUrl,
-      'sha256': sha256,
-      'packageType': 'apk',
-      'notes': (release['body'] as String?)?.trim() ?? '',
-    };
   }
 
   Map<String, dynamic>? _buildAndroidEntryFromExpandedAssetsHtml({
@@ -283,48 +268,109 @@ class UpdateRepository {
     if (version == null || version.isEmpty) {
       return null;
     }
-
-    final apkAsset = _selectAndroidApkAsset(
-      assets,
-      expectedVersion: version,
+    return _buildAndroidEntryFromAssets(
+      assets: assets,
+      version: version,
+      notes: notes,
     );
-    if (apkAsset == null) {
+  }
+
+  Map<String, dynamic>? _buildAndroidEntryFromAssets({
+    required List<Map<String, dynamic>> assets,
+    required String version,
+    required String notes,
+  }) {
+    final apkAssets = _selectAndroidApkAssets(assets, expectedVersion: version);
+    if (apkAssets.isEmpty) {
       return null;
     }
+    final primaryAsset = _resolvePrimaryAndroidAsset(apkAssets);
+    if (primaryAsset == null) {
+      return null;
+    }
+    final primaryInfo = _readAndroidAssetInfo(primaryAsset);
+    if (primaryInfo == null) {
+      return null;
+    }
+    final variants = _buildAndroidVariantMap(apkAssets);
+    return {
+      'version': version,
+      'buildNumber': primaryInfo['buildNumber'],
+      'downloadUrl': primaryInfo['downloadUrl'],
+      'sha256': primaryInfo['sha256'],
+      'packageType': 'apk',
+      'notes': notes,
+      if (variants.isNotEmpty) 'variants': variants,
+    };
+  }
 
-    final downloadUrl = (apkAsset['browser_download_url'] as String?)?.trim();
-    final digest = (apkAsset['digest'] as String?)?.trim();
+  Map<String, dynamic> _buildAndroidVariantMap(
+    List<Map<String, dynamic>> assets,
+  ) {
+    final variants = <String, Map<String, dynamic>>{};
+    for (final asset in assets) {
+      final abi = _matchAndroidAbi(asset);
+      if (abi == null ||
+          abi == 'universal' ||
+          abi == 'x86' ||
+          abi == 'x86_64') {
+        continue;
+      }
+      final assetInfo = _readAndroidAssetInfo(asset);
+      if (assetInfo == null) {
+        continue;
+      }
+      variants[abi] = {
+        'downloadUrl': assetInfo['downloadUrl'],
+        'sha256': assetInfo['sha256'],
+        'packageType': 'apk',
+      };
+    }
+    return variants;
+  }
+
+  Map<String, dynamic>? _readAndroidAssetInfo(Map<String, dynamic> asset) {
+    final downloadUrl = (asset['browser_download_url'] as String?)?.trim();
+    final digest = (asset['digest'] as String?)?.trim();
     final sha256 = _extractSha256(digest);
     if (downloadUrl == null || downloadUrl.isEmpty || sha256 == null) {
       return null;
     }
-
     return {
-      'version': version,
-      'buildNumber': _extractBuildNumber(apkAsset),
       'downloadUrl': downloadUrl,
       'sha256': sha256,
-      'packageType': 'apk',
-      'notes': notes,
+      'buildNumber': _extractBuildNumber(asset),
     };
   }
 
-  Map<String, dynamic>? _selectLatestRelease(
-    List<Map<String, dynamic>> releases, {
-    required bool prerelease,
-  }) {
-    for (final release in releases) {
-      final isDraft = release['draft'] == true;
-      final isPrerelease = release['prerelease'] == true;
-      if (isDraft || isPrerelease != prerelease) {
-        continue;
-      }
-      return release;
+  Map<String, dynamic>? _resolvePrimaryAndroidAsset(
+    List<Map<String, dynamic>> assets,
+  ) {
+    final universalAssets = assets.where(_isUniversalAndroidAsset).toList();
+    if (universalAssets.isNotEmpty) {
+      universalAssets.sort(_compareAndroidApkAssets);
+      return universalAssets.first;
     }
-    return null;
+    final arm64Assets = assets
+        .where((asset) => _matchAndroidAbi(asset) == 'arm64-v8a')
+        .toList();
+    if (arm64Assets.isNotEmpty) {
+      arm64Assets.sort(_compareAndroidApkAssets);
+      return arm64Assets.first;
+    }
+    final armV7Assets = assets
+        .where((asset) => _matchAndroidAbi(asset) == 'armeabi-v7a')
+        .toList();
+    if (armV7Assets.isNotEmpty) {
+      armV7Assets.sort(_compareAndroidApkAssets);
+      return armV7Assets.first;
+    }
+    final fallbackAssets = List<Map<String, dynamic>>.from(assets)
+      ..sort(_compareAndroidApkAssets);
+    return fallbackAssets.isEmpty ? null : fallbackAssets.first;
   }
 
-  Map<String, dynamic>? _selectAndroidApkAsset(
+  List<Map<String, dynamic>> _selectAndroidApkAssets(
     List<Map<String, dynamic>> assets, {
     String? expectedVersion,
   }) {
@@ -338,11 +384,16 @@ class UpdateRepository {
         apkAssets.add(asset);
       }
     }
-
     if (apkAssets.isEmpty) {
-      return null;
+      return const <Map<String, dynamic>>[];
     }
-
+    final nonX86Assets = apkAssets.where((asset) {
+      final abi = _matchAndroidAbi(asset);
+      return abi != 'x86' && abi != 'x86_64';
+    }).toList();
+    if (nonX86Assets.isNotEmpty) {
+      apkAssets = nonX86Assets;
+    }
     if (expectedVersion != null && expectedVersion.isNotEmpty) {
       final versionMatchedAssets = apkAssets.where((asset) {
         return _assetContainsVersion(asset, expectedVersion);
@@ -350,14 +401,9 @@ class UpdateRepository {
       if (versionMatchedAssets.isNotEmpty) {
         apkAssets = versionMatchedAssets;
       }
-
       final likelyGiftLedgerAssets = apkAssets.where((asset) {
-        final name = (asset['name'] as String?)?.toLowerCase() ?? '';
-        final url =
-            (asset['browser_download_url'] as String?)?.toLowerCase() ?? '';
         return _isLikelyGiftLedgerReleaseAsset(
-          name: name,
-          url: url,
+          asset: asset,
           version: expectedVersion,
         );
       }).toList();
@@ -365,62 +411,94 @@ class UpdateRepository {
         apkAssets = likelyGiftLedgerAssets;
       }
     }
-
     final assetsWithBuildNumber = apkAssets.where((asset) {
       return _extractBuildNumber(asset) > 0;
     }).toList();
     if (assetsWithBuildNumber.isNotEmpty) {
       apkAssets = assetsWithBuildNumber;
     }
-
     apkAssets.sort(_compareAndroidApkAssets);
-    return apkAssets.first;
+    return apkAssets;
   }
 
   int _compareAndroidApkAssets(
     Map<String, dynamic> left,
     Map<String, dynamic> right,
   ) {
-    final leftArm64 = _isArm64Asset(left);
-    final rightArm64 = _isArm64Asset(right);
-    if (leftArm64 != rightArm64) {
-      return leftArm64 ? -1 : 1;
-    }
-
     final leftBuildNumber = _extractBuildNumber(left);
     final rightBuildNumber = _extractBuildNumber(right);
     if (leftBuildNumber != rightBuildNumber) {
       return rightBuildNumber.compareTo(leftBuildNumber);
     }
-
+    final leftPriority = _androidAbiPriority(_matchAndroidAbi(left));
+    final rightPriority = _androidAbiPriority(_matchAndroidAbi(right));
+    if (leftPriority != rightPriority) {
+      return leftPriority.compareTo(rightPriority);
+    }
     final leftSize = _assetSizeOrMax(left);
     final rightSize = _assetSizeOrMax(right);
     return leftSize.compareTo(rightSize);
   }
 
-  bool _isArm64Asset(Map<String, dynamic> asset) {
-    final name = (asset['name'] as String?)?.toLowerCase() ?? '';
-    final url = (asset['browser_download_url'] as String?)?.toLowerCase() ?? '';
-    return name.contains('arm64') || url.contains('arm64');
+  int _androidAbiPriority(String? abi) {
+    switch (abi) {
+      case 'universal':
+        return 0;
+      case 'arm64-v8a':
+        return 1;
+      case 'armeabi-v7a':
+        return 2;
+      case 'x86_64':
+        return 3;
+      case 'x86':
+        return 4;
+      default:
+        return 5;
+    }
+  }
+
+  bool _isUniversalAndroidAsset(Map<String, dynamic> asset) {
+    return _matchAndroidAbi(asset) == 'universal';
+  }
+
+  String? _matchAndroidAbi(Map<String, dynamic> asset) {
+    final candidates = _assetIdentityCandidates(asset);
+
+    for (final candidate in candidates) {
+      if (candidate.contains('arm64-v8a') || candidate.contains('arm64')) {
+        return 'arm64-v8a';
+      }
+      if (candidate.contains('armeabi-v7a') ||
+          candidate.contains('armeabi') ||
+          candidate.contains('arm-v7a') ||
+          candidate.contains('armv7')) {
+        return 'armeabi-v7a';
+      }
+      if (candidate.contains('x86_64') || candidate.contains('x86-64')) {
+        return 'x86_64';
+      }
+      if (candidate.contains('x86')) {
+        return 'x86';
+      }
+      if (candidate.contains('universal')) {
+        return 'universal';
+      }
+    }
+    return null;
   }
 
   bool _isLikelyGiftLedgerReleaseAsset({
-    required String name,
-    required String url,
+    required Map<String, dynamic> asset,
     required String version,
   }) {
-    final candidate = '$name $url';
-    if (!candidate.contains('gift_ledger')) {
+    final candidates = _assetIdentityCandidates(asset);
+    if (!candidates.any((candidate) => candidate.contains('gift_ledger'))) {
       return false;
     }
-
-    if (_containsSuspiciousAssetMarker(candidate)) {
+    if (candidates.any(_containsSuspiciousAssetMarker)) {
       return false;
     }
-
-    final normalizedVersion = version.toLowerCase();
-    return candidate.contains(normalizedVersion) ||
-        candidate.contains('v$normalizedVersion');
+    return _assetContainsVersion(asset, version);
   }
 
   bool _containsSuspiciousAssetMarker(String candidate) {
@@ -438,10 +516,19 @@ class UpdateRepository {
 
   bool _assetContainsVersion(Map<String, dynamic> asset, String version) {
     final lowerVersion = version.toLowerCase();
-    final candidates = <String>[
-      (asset['name'] as String?)?.toLowerCase() ?? '',
-      (asset['browser_download_url'] as String?)?.toLowerCase() ?? '',
-    ];
+    final assetName = (asset['name'] as String?)?.trim();
+    final assetFileName = _assetFileName(asset);
+    final extractedVersions = <String>{
+      if (_extractVersion(assetName)?.isNotEmpty == true)
+        _extractVersion(assetName!)!.toLowerCase(),
+      if (_extractVersion(assetFileName)?.isNotEmpty == true)
+        _extractVersion(assetFileName)!.toLowerCase(),
+    };
+    if (extractedVersions.isNotEmpty) {
+      return extractedVersions.contains(lowerVersion);
+    }
+
+    final candidates = _assetIdentityCandidates(asset);
 
     for (final candidate in candidates) {
       if (candidate.contains('v$lowerVersion') ||
@@ -449,8 +536,26 @@ class UpdateRepository {
         return true;
       }
     }
-
     return false;
+  }
+
+  List<String> _assetIdentityCandidates(Map<String, dynamic> asset) {
+    final rawUrl = (asset['browser_download_url'] as String?)?.trim();
+    final candidates = <String>{
+      (asset['name'] as String?)?.trim().toLowerCase() ?? '',
+      _assetFileName(asset),
+      rawUrl?.toLowerCase() ?? '',
+    };
+    candidates.removeWhere((candidate) => candidate.isEmpty);
+    return candidates.toList(growable: false);
+  }
+
+  String _assetFileName(Map<String, dynamic> asset) {
+    final rawUrl = (asset['browser_download_url'] as String?)?.trim();
+    if (rawUrl == null || rawUrl.isEmpty) {
+      return '';
+    }
+    return Uri.tryParse(rawUrl)?.pathSegments.last.toLowerCase() ?? '';
   }
 
   int _assetSizeOrMax(Map<String, dynamic> asset) {
@@ -486,7 +591,6 @@ class UpdateRepository {
     if (cachedJson == null || cachedJson.trim().isEmpty) {
       return null;
     }
-
     try {
       final decoded = jsonDecode(cachedJson);
       if (decoded is! Map) {
@@ -503,32 +607,20 @@ class UpdateRepository {
     String url, {
     required String description,
   }) async {
-    final responseData = await _fetcher(
-      url,
-      _buildRequestOptions(url),
-    );
-    return _normalizeTextResponse(
-      responseData,
-      description: description,
-    );
+    final responseData = await _fetcher(url, _buildRequestOptions(url));
+    return _normalizeTextResponse(responseData, description: description);
   }
 
   Future<Object?> _defaultFetch(String url, Options options) async {
-    final response = await _dio.get<Object>(
-      url,
-      options: options,
-    );
+    final response = await _dio.get<Object>(url, options: options);
     return response.data;
   }
 
   Options _buildRequestOptions(String url) {
-    final headers = <String, Object>{
-      'User-Agent': 'GiftLedgerApp/1.0',
-    };
+    final headers = <String, Object>{'User-Agent': 'GiftLedgerApp/1.0'};
     if (url == githubContentsApiUrl || url == githubReleasesApiUrl) {
       headers['Accept'] = 'application/vnd.github+json';
     }
-
     return Options(
       responseType: ResponseType.plain,
       headers: headers,
@@ -544,7 +636,6 @@ class UpdateRepository {
     if (manifestCandidate is! Map) {
       throw const FormatException('Update manifest must be a JSON object.');
     }
-
     return Map<String, dynamic>.from(manifestCandidate);
   }
 
@@ -552,7 +643,6 @@ class UpdateRepository {
     if (decoded is! Map) {
       return decoded;
     }
-
     final content = decoded['content'];
     final encoding = decoded['encoding'];
     if (content is! String) {
@@ -561,12 +651,10 @@ class UpdateRepository {
     if (encoding is String && encoding.toLowerCase() != 'base64') {
       throw const FormatException('Unsupported GitHub contents encoding.');
     }
-
     final normalizedContent = content.replaceAll('\n', '').trim();
     if (normalizedContent.isEmpty) {
       throw const FormatException('GitHub contents response is empty.');
     }
-
     final nestedJson = utf8.decode(base64Decode(normalizedContent));
     return jsonDecode(nestedJson);
   }
@@ -580,7 +668,6 @@ class UpdateRepository {
     if (tagFromRoute != null && tagFromRoute.isNotEmpty) {
       return tagFromRoute;
     }
-
     final titleMatch = RegExp(
       r'<title>\s*Release\s+([^<\s]+)',
       caseSensitive: false,
@@ -589,9 +676,9 @@ class UpdateRepository {
     if (tagFromTitle != null && tagFromTitle.isNotEmpty) {
       return tagFromTitle;
     }
-
     throw const FormatException(
-        'Unable to determine latest GitHub release tag.');
+      'Unable to determine latest GitHub release tag.',
+    );
   }
 
   String _extractReleaseNotesFromHtml(String html) {
@@ -602,7 +689,6 @@ class UpdateRepository {
     if (bodyMatch == null) {
       return '';
     }
-
     var content = bodyMatch.group(1) ?? '';
     content = content.replaceAll(
       RegExp(r'<br\s*/?>', caseSensitive: false),
@@ -645,7 +731,6 @@ class UpdateRepository {
       normalizedLines.add(line);
       previousBlank = false;
     }
-
     return normalizedLines.join('\n').trim();
   }
 
@@ -656,7 +741,6 @@ class UpdateRepository {
       if (rawValue == null || rawValue.isEmpty) {
         return match.group(0) ?? '';
       }
-
       final isHex = rawValue.startsWith('x') || rawValue.startsWith('X');
       final codePoint = int.tryParse(
         isHex ? rawValue.substring(1) : rawValue,
@@ -694,12 +778,10 @@ class UpdateRepository {
     if (source == null) {
       return null;
     }
-
     final trimmed = source.trim();
     if (trimmed.isEmpty) {
       return null;
     }
-
     final match = _versionPattern.firstMatch(trimmed);
     return match?.group(1)?.trim();
   }
@@ -714,37 +796,29 @@ class UpdateRepository {
       if (candidate.isEmpty) {
         continue;
       }
-
       final match = _buildNumberPattern.firstMatch(candidate);
       final rawValue = match?.group(1);
       if (rawValue == null || rawValue.isEmpty) {
         continue;
       }
-
       final buildNumber = int.tryParse(rawValue);
       if (buildNumber != null) {
         return buildNumber;
       }
     }
-
     return 0;
   }
 
-  String _normalizeTextResponse(
-    Object? data, {
-    required String description,
-  }) {
+  String _normalizeTextResponse(Object? data, {required String description}) {
     if (data is String) {
       final trimmed = data.trim();
       if (trimmed.isNotEmpty) {
         return trimmed;
       }
     }
-
     if (data is Map || data is List) {
       return jsonEncode(data);
     }
-
     throw FormatException('Empty or invalid $description.');
   }
 }

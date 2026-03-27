@@ -1,23 +1,16 @@
 # 🔨 Build Guide
 
-This guide shows how to build Gift Ledger on each platform.
+This document explains how to build Gift Ledger locally and in GitHub Actions.
 
 ---
 
 ## ✅ Requirements
 
 - **Flutter SDK**: 3.2.0+
-- **Dart SDK**: Bundled with Flutter
-- **Git**: For cloning the repo
-
-### Platform-specific
-
-| Platform | Extra Requirements |
-|----------|--------------------|
-| **Android** | Android Studio / Android SDK (API 21+) |
-| **Windows** | Visual Studio 2022 with C++ desktop workload |
-| **Web** | Chrome (for debugging) |
-| **iOS** | macOS + Xcode 14+ + CocoaPods |
+- **Git**
+- **Android**: Android Studio / Android SDK (API 21+)
+- **Windows**: Visual Studio 2022 with C++ desktop workload
+- **iOS**: macOS + Xcode 14+ + CocoaPods
 
 ---
 
@@ -34,10 +27,36 @@ flutter doctor
 
 ## 🤖 Android
 
+### Rules
+
+- Official releases now publish **split APKs only**
+- Only **armeabi-v7a** and **arm64-v8a** are kept
+- **x86 / x86_64 / universal.apk are no longer published**
+- The same ABI rule applies to local builds and GitHub Actions
+
+### Split APKs per ABI
+
 ```bash
-flutter build apk --release --split-per-abi
-flutter build appbundle --release
+flutter build apk --release --split-per-abi --target-platform android-arm,android-arm64
 ```
+
+Outputs:
+
+- `build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk`
+- `build/app/outputs/flutter-apk/app-arm64-v8a-release.apk`
+
+### Release artifact naming
+
+`publish-updates.yml` publishes:
+
+- `gift_ledger-<channel>-android-v<version>-build<build>-armeabi-v7a.apk`
+- `gift_ledger-<channel>-android-v<version>-build<build>-arm64-v8a.apk`
+
+Notes:
+
+- the top-level Android `downloadUrl` in the manifest points to `arm64-v8a.apk`
+- newer clients read Android `variants` from the manifest and download the matching ABI package
+- older clients that only understand the top-level `downloadUrl` are **not guaranteed** to stay compatible with the removed universal flow
 
 ---
 
@@ -47,7 +66,33 @@ flutter build appbundle --release
 flutter build windows --release
 ```
 
-Output: `build/windows/x64/runner/Release/`
+Output:
+
+- `build/windows/x64/runner/Release/`
+
+---
+
+## 🔄 In-app update publishing
+
+Manifest URL:
+
+```text
+https://raw.githubusercontent.com/final00000000/Gift_Ledger/master/releases/update-manifest.json
+```
+
+Workflow:
+
+```text
+.github/workflows/publish-updates.yml
+```
+
+It will:
+
+1. build Android split APKs for `armeabi-v7a` and `arm64-v8a`
+2. build the Windows installer
+3. upload GitHub Release assets
+4. generate `releases/update-manifest.json`
+5. write Android `variants` so the app can resolve the correct ABI package
 
 ---
 
@@ -57,21 +102,64 @@ Output: `build/windows/x64/runner/Release/`
 flutter build web --release
 ```
 
-Output: `build/web/`
-
 ---
 
 ## 🍎 iOS
 
+> GitHub Actions can build an IPA for this project, but **you must provide your own Apple signing assets**. The repository does not include certificates, private keys, or provisioning profiles.
+
+### Local unsigned verification
+
 ```bash
+flutter pub get
 cd ios
 pod install
 cd ..
-flutter build ios --release
+flutter build ios --release --no-codesign
 ```
 
-Open in Xcode for signing: `ios/Runner.xcworkspace`
+### Local signed IPA export
 
----
+```bash
+flutter pub get
+cd ios
+pod install
+cd ..
+flutter build ipa --release --export-options-plist=/path/to/ExportOptions.plist
+```
 
-For more details, see the Chinese guide: [BUILD.md](./BUILD.md)
+### GitHub Actions workflows
+
+#### Unsigned verification
+
+```text
+.github/workflows/ios-verify.yml
+```
+
+- validates the iOS project on `push` / `pull_request`
+- does not require signing assets
+- does not produce a production-ready signed IPA
+
+#### Signed IPA build
+
+```text
+.github/workflows/ios-ipa.yml
+```
+
+- runs on `workflow_dispatch`
+- only uses signing assets that **you** provide
+- runs `flutter build ipa`
+- uploads `.ipa` and `.xcarchive` artifacts
+
+### Required secrets for `ios-ipa.yml`
+
+- `IOS_P12_BASE64`
+- `IOS_P12_PASSWORD`
+- `IOS_MOBILEPROVISION_BASE64`
+- `IOS_EXPORT_OPTIONS_PLIST_BASE64`
+
+Optional:
+
+- `IOS_KEYCHAIN_PASSWORD`
+
+If you do not have these assets, you can still run `ios-verify.yml`, but you cannot build a signed IPA.

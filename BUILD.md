@@ -1,84 +1,71 @@
 # 🔨 构建指南
 
-本文档说明如何为不同平台构建随礼记应用。
+本文档说明如何在本地与 GitHub Actions 中构建随礼记。
 
 ---
 
 ## 📋 前置要求
 
-- **Flutter SDK**: 3.2.0 或更高版本
-- **Dart SDK**: 随 Flutter 一起安装
-- **Git**: 用于克隆仓库
-
-### 平台特定要求
-
-| 平台 | 额外要求 |
-|------|----------|
-| **Android** | Android Studio / Android SDK (API 21+) |
-| **Windows** | Visual Studio 2022 (含 C++ 桌面开发工具) |
-| **Web** | Chrome 浏览器（用于调试） |
-| **iOS** | macOS + Xcode 14+ + CocoaPods |
+- **Flutter SDK**：3.2.0 或更高版本
+- **Git**：用于克隆仓库
+- **Android**：Android Studio / Android SDK（API 21+）
+- **Windows**：Visual Studio 2022（含 C++ 桌面开发工具）
+- **iOS**：macOS + Xcode 14+ + CocoaPods
 
 ---
 
 ## 🚀 快速开始
 
-### 1. 克隆仓库
-
 ```bash
 git clone https://github.com/final00000000/Gift_Ledger.git
 cd Gift_Ledger
-```
-
-### 2. 安装依赖
-
-```bash
 flutter pub get
-```
-
-### 3. 检查环境
-
-```bash
 flutter doctor
 ```
-
-确保所有必需的工具都已正确安装。
 
 ---
 
 ## 📦 Android 构建
 
-### 调试版本
+### 关键规则
+
+- **正式发布只产出两个 split APK**
+- **仅保留 `armeabi-v7a` / `arm64-v8a`**
+- **不再发布 `x86 / x86_64 / universal.apk`**
+- 本地与 CI 都遵循同一 ABI 约束
+- `android/app/build.gradle` 已通过 `abiFilters` 限定为：
+  - `armeabi-v7a`
+  - `arm64-v8a`
+
+### 本地构建：按 ABI 拆分 APK
 
 ```bash
-flutter build apk --debug
+flutter build apk --release --split-per-abi --target-platform android-arm,android-arm64
 ```
 
-输出位置：`build/app/outputs/flutter-apk/app-debug.apk`
+输出：
 
-### 发布版本（最小化 APK）
+- `build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk`
+- `build/app/outputs/flutter-apk/app-arm64-v8a-release.apk`
+
+### 本地构建：AAB
 
 ```bash
-# 构建优化的 APK（启用代码压缩和混淆）
-flutter build apk --release --shrink
-
-# 或构建 App Bundle（推荐用于 Google Play）
 flutter build appbundle --release
 ```
 
-输出位置：
-- APK: `build/app/outputs/flutter-apk/app-release.apk`
-- AAB: `build/app/outputs/bundle/release/app-release.aab`
+### 发布产物命名约定
 
-### APK 大小优化说明
+GitHub Actions `publish-updates.yml` 会产出：
 
-项目已配置以下优化：
-- ✅ **代码压缩**：移除未使用的代码
-- ✅ **资源压缩**：移除未使用的资源
-- ✅ **代码混淆**：使用 ProGuard/R8 混淆代码
-- ✅ **拆分 ABI**：为不同 CPU 架构生成单独的 APK
+- `gift_ledger-<channel>-android-v<version>-build<build>-armeabi-v7a.apk`
+- `gift_ledger-<channel>-android-v<version>-build<build>-arm64-v8a.apk`
 
-预期 APK 大小：**15-20 MB**（单架构）
+说明：
+
+- update manifest 顶层 `downloadUrl` 固定指向 `arm64-v8a.apk`
+- 新版客户端优先读取 manifest 中的 `variants`，按设备 ABI 下载对应 split APK
+- 旧版客户端若只认识顶层 `downloadUrl`，会默认拿到 arm64 包，因此**不再承诺兼容旧的 universal 更新链路**
 
 ---
 
@@ -90,17 +77,12 @@ flutter build appbundle --release
 flutter build windows --release
 ```
 
-输出位置：`build/windows/x64/runner/Release/`
+输出：`build/windows/x64/runner/Release/`
 
-### 打包为 EXE 安装器（推荐）
+### 打包为安装器
 
 ```bash
-# 1. 先构建 Windows Release
 flutter build windows --release
-
-# 2. 使用 Inno Setup 脚本生成安装器（示例为 stable）
-# 脚本位置：windows/installer/GiftLedger.iss
-# 需要在 Windows 环境安装 Inno Setup 6
 iscc ^
   /DAppVersion=1.3.2 ^
   /DAppBuild=1030299 ^
@@ -109,51 +91,17 @@ iscc ^
   windows/installer/GiftLedger.iss
 ```
 
-推荐产物：`gift_ledger-<channel>-windows-v<version>-build<build>-setup.exe`
-
-> 说明：Windows 发布不再以 ZIP 作为主分发格式，优先使用 EXE 安装器，
-> 便于后续 App 内更新直接拉起安装流程。
-
 ---
 
 ## 🔄 Android / Windows 内置更新发布
 
-### 固定 manifest 地址
-
-客户端固定读取以下地址：
+### manifest 地址
 
 ```text
 https://raw.githubusercontent.com/final00000000/Gift_Ledger/master/releases/update-manifest.json
 ```
 
-### manifest 结构约定
-
-- 发布侧统一生成 `releases/update-manifest.json`
-- 支持两个通道：`stable`、`beta`
-- 支持两个平台：`android`、`windows`
-- 目标键统一格式：
-
-```text
-<resolvedTargetChannel>@<platform>@<version>@<buildNumber>
-```
-
-### 本地生成 manifest
-
-```bash
-python tool/generate_update_manifest.py \
-  --input tool/release/update_release_matrix.sample.json \
-  --output releases/update-manifest.json
-```
-
-可继续做 JSON 校验：
-
-```bash
-python -m json.tool releases/update-manifest.json > nul
-```
-
-### GitHub Actions 发布工作流
-
-工作流文件：
+### 工作流
 
 ```text
 .github/workflows/publish-updates.yml
@@ -161,182 +109,143 @@ python -m json.tool releases/update-manifest.json > nul
 
 职责：
 
-1. 构建 Android APK
-2. 构建 Windows Release + EXE 安装器
-3. 计算产物 sha256
-4. 上传 GitHub Release 资产
-5. 生成并提交 `releases/update-manifest.json`
+1. 构建 Android split APK（仅 `armeabi-v7a` / `arm64-v8a`）
+2. 构建 Windows 安装器
+3. 上传 GitHub Release 资产
+4. 生成并提交 `releases/update-manifest.json`
+5. 为 Android 写入 `variants`，让客户端按 ABI 下载对应安装包
 
-### 通道规则
+### 本地生成 manifest
 
-- `stable`：默认公开发布通道
-- `beta`：手动开启的测试通道
-- beta 用户优先接收 beta；若无更高 beta，则回退 stable
-
-### 发布前最小检查清单
-
-- `pubspec.yaml` 版本号已更新
-- Android / Windows 产物命名符合约定
-- manifest 中 `version` / `buildNumber` / `downloadUrl` / `sha256` 正确
-- `releases/update-manifest.json` 可被 Raw URL 直接访问
-- 设置页切换 stable / beta 后，客户端行为符合预期
+```bash
+python tool/generate_update_manifest.py   --input tool/release/update_release_matrix.sample.json   --output releases/update-manifest.json
+```
 
 ---
 
 ## 🌐 Web 构建
 
-### 发布版本
-
 ```bash
 flutter build web --release
 ```
 
-输出位置：`build/web/`
-
-### 本地测试
-
-```bash
-# 使用 Python 启动本地服务器
-cd build/web
-python -m http.server 8000
-
-# 或使用 Node.js
-npx serve
-```
-
-访问：`http://localhost:8000`
-
-### 部署到静态托管
-
-构建产物（`build/web/` 目录）可直接部署到：
-- GitHub Pages
-- Vercel
-- Netlify
-- Cloudflare Pages
-- 任何静态文件托管服务
+输出：`build/web/`
 
 ---
 
 ## 🍎 iOS 构建
 
-> **注意**：iOS 构建需要 macOS 系统和 Apple 开发者账号（用于真机安装）。
+> **注意**：仓库可以通过 GitHub Actions 生成 IPA，但**签名材料必须由你自己准备**，仓库默认不提供任何 Apple 私钥、证书或描述文件。
 
-### 1. 安装 CocoaPods 依赖
+### 本地无签名校验构建
 
 ```bash
+flutter pub get
 cd ios
 pod install
 cd ..
+flutter build ios --release --no-codesign
 ```
 
-### 2. 使用 Xcode 构建
+### 本地签名导出 IPA
 
 ```bash
-# 打开 Xcode 项目
-open ios/Runner.xcworkspace
+flutter pub get
+cd ios
+pod install
+cd ..
+flutter build ipa --release --export-options-plist=/path/to/ExportOptions.plist
 ```
 
-在 Xcode 中：
-1. 选择你的开发团队（Signing & Capabilities）
-2. 连接 iOS 设备
-3. 选择目标设备
-4. 点击 Run 或 Archive
+### GitHub Actions：iOS 工作流
 
-### 3. 命令行构建（需要配置签名）
+#### 1. 无签名校验
 
-```bash
-flutter build ios --release
+```text
+.github/workflows/ios-verify.yml
 ```
 
-输出位置：`build/ios/iphoneos/Runner.app`
+用途：
 
-### 生成 IPA（需要开发者账号）
+- `push` / `pull_request` 验证 iOS 工程是否可编译
+- 不依赖证书
+- 不生成可安装的正式 IPA
 
-在 Xcode 中：
-1. Product → Archive
-2. 等待归档完成
-3. Distribute App → Ad Hoc / App Store
-4. 导出 IPA 文件
+#### 2. 手动构建 IPA
+
+```text
+.github/workflows/ios-ipa.yml
+```
+
+用途：
+
+- `workflow_dispatch` 手动触发
+- 只会使用你自己提供的签名材料
+- 执行 `flutter build ipa`
+- 上传 `.ipa` 与 `.xcarchive` artifact
+
+### iOS IPA workflow 必需 secrets
+
+- `IOS_P12_BASE64`：Base64 编码后的 `.p12` 证书
+- `IOS_P12_PASSWORD`：`.p12` 密码
+- `IOS_MOBILEPROVISION_BASE64`：Base64 编码后的 `.mobileprovision`
+- `IOS_EXPORT_OPTIONS_PLIST_BASE64`：Base64 编码后的 `ExportOptions.plist`
+
+可选：
+
+- `IOS_KEYCHAIN_PASSWORD`：临时 keychain 密码；不填时 workflow 会使用默认临时密码
+
+### iOS 签名说明
+
+你需要自行准备：
+
+- Apple Developer 账号
+- 正确的 Bundle ID / App ID
+- 对应证书与 Provisioning Profile
+- 与导出方式匹配的 `ExportOptions.plist`
+
+如果没有这些材料：
+
+- 可以运行 `ios-verify.yml`
+- **不能**产出可安装的正式 IPA
 
 ---
 
-## 🔧 常见问题
+## 📝 版本号规则
 
-### Android 构建失败
-
-**问题**：`Execution failed for task ':app:lintVitalRelease'`
-
-**解决**：在 `android/app/build.gradle` 中添加：
-```gradle
-android {
-    lintOptions {
-        checkReleaseBuilds false
-    }
-}
-```
-
-### Windows 构建失败
-
-**问题**：缺少 Visual Studio 工具
-
-**解决**：
-1. 安装 Visual Studio 2022
-2. 勾选"使用 C++ 的桌面开发"工作负载
-3. 重新运行 `flutter doctor`
-
-### iOS 构建失败
-
-**问题**：`CocoaPods not installed`
-
-**解决**：
-```bash
-sudo gem install cocoapods
-```
-
-### Web 构建后无法加载
-
-**问题**：CORS 错误或资源加载失败
-
-**解决**：
-- 确保使用 HTTP 服务器（不要直接打开 index.html）
-- 检查 `web/index.html` 中的 base href 配置
-
----
-
-## 📝 版本号管理
-
-版本号在 `pubspec.yaml` 中定义，例如：
-
-```yaml
-version: 1.3.2+1030299
-```
-
-当前项目的版本号与发布填写规则已单独整理为：
+版本与 build number 的填写规则见：
 
 ```text
 docs/RELEASE_VERSION_RULES.md
 ```
 
-重点约定：
+重点：
 
-- `pubspec.yaml` 保存当前 stable 版本
-- Android `versionCode` 不再跟 GitHub Actions run number 绑定
-- beta 发布时必须填写完整 `release_tag`，例如 `v1.3.2-beta.2`
-- stable / beta 的 build number 都由统一脚本生成并校验
-
----
-
-## 🤝 贡献
-
-如果你在构建过程中遇到问题或有改进建议，欢迎：
-- 提交 Issue
-- 发起 Pull Request
-- 更新本文档
+- `pubspec.yaml` 始终保存当前 stable 版本
+- Android `versionCode` 不跟 GitHub Actions run number 绑定
+- beta 发布必须填写完整 `release_tag`
 
 ---
 
-## 📄 许可证
+## 🔧 常见问题
 
-本项目采用 MIT 许可证。详见 [LICENSE](LICENSE) 文件。
+### Android 构建后为什么只有两个 APK？
 
+因为当前正式发布只保留：
 
+- `armeabi-v7a`
+- `arm64-v8a`
+
+`x86 / x86_64 / universal.apk` 已从正式发布链路中移除。
+
+### iOS workflow 为什么不能直接用？
+
+因为 IPA 签名依赖 Apple 开发者资产，GitHub Actions 只能**使用**你提供的签名材料，不能替你生成。
+
+---
+
+## 📄 相关文档
+
+- 中文构建说明：`BUILD.md`
+- 英文构建说明：`docs/BUILD_EN.md`
+- 版本规则：`docs/RELEASE_VERSION_RULES.md`
