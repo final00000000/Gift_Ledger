@@ -135,79 +135,14 @@ flutter build web --release
 
 ## 🍎 iOS 构建
 
-> **注意**：仓库可以通过 GitHub Actions 生成 IPA，但**签名材料必须由你自己准备**，仓库默认不提供任何 Apple 私钥、证书或描述文件。
+> **注意**：iOS 安装包仅支持在 macOS + Xcode 环境中本地构建并签名导出。
 
 ### 本地无签名校验构建
 
 ```bash
 flutter pub get
-cd ios
-pod install
-cd ..
 flutter build ios --release --no-codesign
 ```
-
-### 本地签名导出 IPA
-
-```bash
-flutter pub get
-cd ios
-pod install
-cd ..
-flutter build ipa --release --export-options-plist=/path/to/ExportOptions.plist
-```
-
-### GitHub Actions：iOS 工作流
-
-#### 1. 无签名校验
-
-```text
-.github/workflows/ios-verify.yml
-```
-
-用途：
-
-- `push` / `pull_request` 验证 iOS 工程是否可编译
-- 不依赖证书
-- 不生成可安装的正式 IPA
-
-#### 2. 手动构建 IPA
-
-```text
-.github/workflows/ios-ipa.yml
-```
-
-用途：
-
-- `workflow_dispatch` 手动触发
-- 只会使用你自己提供的签名材料
-- 执行 `flutter build ipa`
-- 上传 `.ipa` 与 `.xcarchive` artifact
-
-### iOS IPA workflow 必需 secrets
-
-- `IOS_P12_BASE64`：Base64 编码后的 `.p12` 证书
-- `IOS_P12_PASSWORD`：`.p12` 密码
-- `IOS_MOBILEPROVISION_BASE64`：Base64 编码后的 `.mobileprovision`
-- `IOS_EXPORT_OPTIONS_PLIST_BASE64`：Base64 编码后的 `ExportOptions.plist`
-
-可选：
-
-- `IOS_KEYCHAIN_PASSWORD`：临时 keychain 密码；不填时 workflow 会使用默认临时密码
-
-### iOS 签名说明
-
-你需要自行准备：
-
-- Apple Developer 账号
-- 正确的 Bundle ID / App ID
-- 对应证书与 Provisioning Profile
-- 与导出方式匹配的 `ExportOptions.plist`
-
-如果没有这些材料：
-
-- 可以运行 `ios-verify.yml`
-- **不能**产出可安装的正式 IPA
 
 ---
 
@@ -237,10 +172,6 @@ docs/RELEASE_VERSION_RULES.md
 - `arm64-v8a`
 
 `x86 / x86_64 / universal.apk` 已从正式发布链路中移除。
-
-### iOS workflow 为什么不能直接用？
-
-因为 IPA 签名依赖 Apple 开发者资产，GitHub Actions 只能**使用**你提供的签名材料，不能替你生成。
 
 ---
 

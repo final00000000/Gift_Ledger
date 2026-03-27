@@ -106,60 +106,11 @@ flutter build web --release
 
 ## 🍎 iOS
 
-> GitHub Actions can build an IPA for this project, but **you must provide your own Apple signing assets**. The repository does not include certificates, private keys, or provisioning profiles.
+> iOS installable packages are only supported through local build and signing on macOS with Xcode.
 
 ### Local unsigned verification
 
 ```bash
 flutter pub get
-cd ios
-pod install
-cd ..
 flutter build ios --release --no-codesign
 ```
-
-### Local signed IPA export
-
-```bash
-flutter pub get
-cd ios
-pod install
-cd ..
-flutter build ipa --release --export-options-plist=/path/to/ExportOptions.plist
-```
-
-### GitHub Actions workflows
-
-#### Unsigned verification
-
-```text
-.github/workflows/ios-verify.yml
-```
-
-- validates the iOS project on `push` / `pull_request`
-- does not require signing assets
-- does not produce a production-ready signed IPA
-
-#### Signed IPA build
-
-```text
-.github/workflows/ios-ipa.yml
-```
-
-- runs on `workflow_dispatch`
-- only uses signing assets that **you** provide
-- runs `flutter build ipa`
-- uploads `.ipa` and `.xcarchive` artifacts
-
-### Required secrets for `ios-ipa.yml`
-
-- `IOS_P12_BASE64`
-- `IOS_P12_PASSWORD`
-- `IOS_MOBILEPROVISION_BASE64`
-- `IOS_EXPORT_OPTIONS_PLIST_BASE64`
-
-Optional:
-
-- `IOS_KEYCHAIN_PASSWORD`
-
-If you do not have these assets, you can still run `ios-verify.yml`, but you cannot build a signed IPA.
