@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:share_plus/share_plus.dart';
 import '../models/gift.dart';
 import '../models/guest.dart';
 import '../services/storage_service.dart';
+import '../services/pending_list_computation_service.dart';
 import '../services/reminder_service.dart';
 import '../services/template_service.dart';
 import '../theme/app_theme.dart';
@@ -13,10 +13,64 @@ import '../services/export_service.dart';
 import '../services/security_service.dart';
 import '../utils/security_unlock.dart';
 import '../widgets/records/pending_gift_card.dart';
+import '../widgets/slidable/unified_slidable_pane.dart';
 import 'add_record_screen.dart';
 
+abstract class PendingListStorage {
+  void addListener(VoidCallback listener);
+  void removeListener(VoidCallback listener);
+  Future<List<Gift>> getUnreturnedGifts();
+  Future<List<Gift>> getPendingReceipts();
+  Future<List<Guest>> getAllGuests();
+  Future<int> updateReturnStatus(
+    int giftId, {
+    required bool isReturned,
+    int? relatedRecordId,
+  });
+  Future<int> incrementRemindedCount(int giftId);
+}
+
+class _PendingListStorageAdapter implements PendingListStorage {
+  _PendingListStorageAdapter(this._storageService);
+
+  final StorageService _storageService;
+
+  @override
+  void addListener(VoidCallback listener) => _storageService.addListener(listener);
+
+  @override
+  Future<List<Guest>> getAllGuests() => _storageService.getAllGuests();
+
+  @override
+  Future<int> incrementRemindedCount(int giftId) =>
+      _storageService.incrementRemindedCount(giftId);
+
+  @override
+  Future<List<Gift>> getPendingReceipts() => _storageService.getPendingReceipts();
+
+  @override
+  Future<List<Gift>> getUnreturnedGifts() => _storageService.getUnreturnedGifts();
+
+  @override
+  void removeListener(VoidCallback listener) =>
+      _storageService.removeListener(listener);
+
+  @override
+  Future<int> updateReturnStatus(
+    int giftId, {
+    required bool isReturned,
+    int? relatedRecordId,
+  }) {
+    return _storageService.updateReturnStatus(
+      giftId,
+      isReturned: isReturned,
+      relatedRecordId: relatedRecordId,
+    );
+  }
+}
+
 class PendingListScreen extends StatefulWidget {
-  final Object? storageService;
+  final PendingListStorage? storageService;
 
   const PendingListScreen({super.key, this.storageService});
 
@@ -27,7 +81,9 @@ class PendingListScreen extends StatefulWidget {
 class _PendingListScreenState extends State<PendingListScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  late final dynamic _storageService;
+  late final PendingListStorage _storageService;
+  final PendingListComputationService _pendingListComputationService =
+      const PendingListComputationService();
   final _reminderService = ReminderService();
   final _templateService = TemplateService();
   final _exportService = ExportService();
@@ -49,7 +105,8 @@ class _PendingListScreenState extends State<PendingListScreen>
   @override
   void initState() {
     super.initState();
-    _storageService = widget.storageService ?? StorageService();
+    _storageService = widget.storageService ??
+        _PendingListStorageAdapter(StorageService());
     _tabController = TabController(length: 2, vsync: this);
     // 监听 StorageService 变化，自动刷新数据
     _storageService.addListener(_onDataChanged);
@@ -73,12 +130,9 @@ class _PendingListScreenState extends State<PendingListScreen>
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
 
-    // 并行加载所有数据，减少等待时间
-    final unreturnedFuture =
-        _storageService.getUnreturnedGifts() as Future<List<Gift>>;
-    final pendingFuture =
-        _storageService.getPendingReceipts() as Future<List<Gift>>;
-    final guestsFuture = _storageService.getAllGuests() as Future<List<Guest>>;
+    final unreturnedFuture = _storageService.getUnreturnedGifts();
+    final pendingFuture = _storageService.getPendingReceipts();
+    final guestsFuture = _storageService.getAllGuests();
     final results = await Future.wait<Object?>([
       unreturnedFuture,
       pendingFuture,
@@ -89,10 +143,18 @@ class _PendingListScreenState extends State<PendingListScreen>
       return;
     }
 
+    final snapshot = _pendingListComputationService.buildSnapshot(
+      unreturnedGifts: results[0] as List<Gift>,
+      pendingReceipts: results[1] as List<Gift>,
+      guests: results[2] as List<Guest>,
+      sortBy: _sortBy,
+      sortAscending: _sortAscending,
+    );
+
     setState(() {
-      _guestMap = {for (var g in (results[2] as List<Guest>)) g.id!: g};
-      _unreturnedGifts = _sortGiftList(results[0] as List<Gift>);
-      _pendingReceipts = _sortGiftList(results[1] as List<Gift>);
+      _guestMap = snapshot.guestMap;
+      _unreturnedGifts = snapshot.unreturnedGifts;
+      _pendingReceipts = snapshot.pendingReceipts;
       _isLoading = false;
     });
   }
@@ -105,35 +167,20 @@ class _PendingListScreenState extends State<PendingListScreen>
   }
 
   void _sortLists() {
+    final snapshot = _pendingListComputationService.buildSnapshot(
+      unreturnedGifts: _unreturnedGifts,
+      pendingReceipts: _pendingReceipts,
+      guests: _guestMap.values.toList(growable: false),
+      sortBy: _sortBy,
+      sortAscending: _sortAscending,
+    );
     setState(() {
-      _unreturnedGifts = _sortGiftList(_unreturnedGifts);
-      _pendingReceipts = _sortGiftList(_pendingReceipts);
+      _unreturnedGifts = snapshot.unreturnedGifts;
+      _pendingReceipts = snapshot.pendingReceipts;
     });
   }
 
-  List<Gift> _sortGiftList(List<Gift> gifts) {
-    final sorted = List<Gift>.from(gifts);
-    sorted.sort((a, b) {
-      int result;
-      switch (_sortBy) {
-        case 'amount':
-          result = a.amount.compareTo(b.amount);
-          break;
-        case 'relationship':
-          final guestA = _guestMap[a.guestId];
-          final guestB = _guestMap[b.guestId];
-          result = (guestA?.relationship ?? '')
-              .compareTo(guestB?.relationship ?? '');
-          break;
-        case 'days':
-        default:
-          result = a.date.compareTo(b.date);
-          break;
-      }
-      return _sortAscending ? result : -result;
-    });
-    return sorted;
-  }
+
 
   void _showSortMenu() {
     showModalBottomSheet(
@@ -243,7 +290,6 @@ class _PendingListScreenState extends State<PendingListScreen>
   Future<void> _markAsReturned(Gift gift) async {
     final guest = _guestMap[gift.guestId];
 
-    // 跳转到新增记录页，预填数据
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
@@ -252,14 +298,14 @@ class _PendingListScreenState extends State<PendingListScreen>
           prefillGuestName: guest?.name,
           prefillEventType: gift.eventType,
           prefillAmount: gift.amount,
-          prefillIsReceived: !gift.isReceived, // 反向：收礼→送礼，送礼→收礼
+          prefillIsReceived: !gift.isReceived,
           relatedGiftId: gift.id,
         ),
       ),
     );
 
     if (result == true) {
-      _loadData();
+      await _loadData();
     }
   }
 
@@ -510,45 +556,42 @@ class _PendingListScreenState extends State<PendingListScreen>
       },
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-        child: Slidable(
-          key: ValueKey(gift.id),
-          enabled: _securityService.isUnlocked.value, // 未解锁时禁止滑动
-          endActionPane: ActionPane(
-            motion: const ScrollMotion(),
-            extentRatio: 0.5, // 适当缩小操作区宽度
-            children: [
-              SlidableAction(
-                onPressed: (_) => _markAsReturned(gift),
-                backgroundColor: Colors.green,
-                foregroundColor: Colors.white,
-                icon: Icons.check_circle_outline,
-                label: isReceived ? '还账' : '收账',
-                borderRadius: BorderRadius.circular(12), // 全圆角
-              ),
-              const SizedBox(width: 8), // 按钮之间的间距
-              SlidableAction(
-                onPressed: (_) => isReceived
-                    ? _openEditRecord(gift)
-                    : _showReminderDialog(gift),
-                backgroundColor: isReceived
-                    ? Colors.grey
-                    : (gift.remindedCount > 2 ? Colors.grey : Colors.blue),
-                foregroundColor: Colors.white,
-                icon: isReceived
-                    ? Icons.edit_outlined
-                    : (gift.remindedCount > 2
-                        ? Icons.warning_amber_outlined
-                        : Icons.message_outlined),
-                label:
-                    isReceived ? '编辑' : (gift.remindedCount > 2 ? '已提醒' : '提醒'),
-                borderRadius: BorderRadius.circular(12), // 全圆角
-              ),
-            ],
-          ),
-          child: Padding(
-            padding: const EdgeInsets.only(right: 8.0), // 关键：卡片与侧滑按钮之间的间距
-            child: content,
-          ),
+        child: ValueListenableBuilder<bool>(
+          valueListenable: _securityService.isUnlocked,
+          builder: (context, isUnlocked, _) {
+            return UnifiedSlidablePane(
+              enabled: isUnlocked,
+              childEndPadding: 8,
+              extentRatio: 0.52,
+              actions: [
+                UnifiedSlidableAction(
+                  label: isReceived ? '还账' : '收账',
+                  color: Colors.green,
+                  onTap: () => _markAsReturned(gift),
+                  icon: Icons.check_circle_outline,
+                  showIcon: false,
+                  borderRadius: const BorderRadius.all(Radius.circular(16)),
+                ),
+                UnifiedSlidableAction(
+                  label: isReceived ? '编辑' : (gift.remindedCount > 2 ? '已提醒' : '提醒'),
+                  color: isReceived
+                      ? const Color(0xFF2C2C2E)
+                      : (gift.remindedCount > 2 ? Colors.grey : Colors.blue),
+                  onTap: () => isReceived
+                      ? _openEditRecord(gift)
+                      : _showReminderDialog(gift),
+                  icon: isReceived
+                      ? Icons.edit_outlined
+                      : (gift.remindedCount > 2
+                          ? Icons.warning_amber_outlined
+                          : Icons.message_outlined),
+                  showIcon: false,
+                  borderRadius: const BorderRadius.all(Radius.circular(16)),
+                ),
+              ],
+              child: content,
+            );
+          },
         ),
       ),
     );

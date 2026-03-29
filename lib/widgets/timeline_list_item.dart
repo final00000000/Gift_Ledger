@@ -1,6 +1,5 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:intl/intl.dart';
 import '../models/gift.dart';
 import '../models/guest.dart';
@@ -9,6 +8,7 @@ import '../theme/app_theme.dart';
 import '../utils/lunar_utils.dart';
 import 'gift_note_preview.dart';
 import 'privacy_aware_text.dart';
+import 'slidable/unified_slidable_pane.dart';
 
 /// 时间轴列表项组件
 /// 左侧时间线 + 右侧卡片设计
@@ -23,6 +23,7 @@ class TimelineListItem extends StatefulWidget {
   final VoidCallback? onDelete;
   final int index;
   final Duration animationDelay;
+  final bool enableAnimations;
 
   const TimelineListItem({
     super.key,
@@ -36,6 +37,7 @@ class TimelineListItem extends StatefulWidget {
     this.onDelete,
     this.index = 0,
     this.animationDelay = Duration.zero,
+    this.enableAnimations = true,
   });
 
   @override
@@ -79,6 +81,10 @@ class _TimelineListItemState extends State<TimelineListItem>
         }
       },
     );
+
+    if (!widget.enableAnimations) {
+      _controller.value = 1;
+    }
   }
 
   @override
@@ -89,6 +95,10 @@ class _TimelineListItemState extends State<TimelineListItem>
 
   @override
   Widget build(BuildContext context) {
+    if (!widget.enableAnimations) {
+      return _buildContent();
+    }
+
     return AnimatedBuilder(
       animation: _controller,
       builder: (context, child) {
@@ -122,56 +132,40 @@ class _TimelineListItemState extends State<TimelineListItem>
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // 左侧时间轴不参与侧滑，保持稳定
             _buildTimeline(itemColor),
-            // 右侧卡片可侧滑
             Expanded(
               child: ValueListenableBuilder<bool>(
                 valueListenable: SecurityService().isUnlocked,
                 builder: (context, isUnlocked, _) {
-                  return Slidable(
-                    key: Key('gift_${widget.gift.id}_slidable'),
+                  return UnifiedSlidablePane(
                     enabled: isUnlocked,
-                  startActionPane: null,
-                    endActionPane: (widget.onEdit == null && widget.onDelete == null)
-                        ? null
-                        : ActionPane(
-                            motion: const ScrollMotion(),
-                            extentRatio: 0.52,
-                            children: [
-                              if (widget.onEdit != null)
-                                _buildActionButton(
-                                  label: '编辑',
-                                  color: const Color(0xFF2C2C2E), // iOS 深灰
-                                  onTap: () {
-                                    widget.onEdit?.call();
-                                  },
-                                  radius: const BorderRadius.all(Radius.circular(16)),
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              if (widget.onEdit != null && widget.onDelete != null)
-                                const SizedBox(width: 8),
-                              if (widget.onDelete != null)
-                                _buildActionButton(
-                                  label: '删除',
-                                  color: const Color(0xFFFF3B30), // iOS 系统红
-                                  onTap: () async {
-                                    // 即使 UI 层已禁用侧滑，这里也做防御性校验：锁定时不允许删除。
-                                    if (!SecurityService().isUnlocked.value) return;
-                                    final confirmed = await _showDeleteConfirmation();
-                                    if (confirmed) {
-                                      widget.onDelete?.call();
-                                    }
-                                  },
-                                  radius: const BorderRadius.all(Radius.circular(16)),
-                                  fontWeight: FontWeight.w800,
-                                ),
-                            ],
-                          ),
-                  child: card,
-                );
-              },
-            ),
+                    actions: [
+                      if (widget.onEdit != null)
+                        UnifiedSlidableAction(
+                          label: '编辑',
+                          color: const Color(0xFF2C2C2E),
+                          onTap: () {
+                            widget.onEdit?.call();
+                          },
+                        ),
+                      if (widget.onDelete != null)
+                        UnifiedSlidableAction(
+                          label: '删除',
+                          color: const Color(0xFFFF3B30),
+                          onTap: () async {
+                            if (!SecurityService().isUnlocked.value) return;
+                            final confirmed = await _showDeleteConfirmation();
+                            if (confirmed) {
+                              widget.onDelete?.call();
+                            }
+                          },
+                          fontWeight: FontWeight.w800,
+                        ),
+                    ],
+                    child: card,
+                  );
+                },
+              ),
             ),
           ],
         ),
@@ -461,37 +455,6 @@ class _TimelineListItemState extends State<TimelineListItem>
       default:
         return Icons.card_giftcard_rounded;
     }
-  }
-
-  Widget _buildActionButton({
-    required String label,
-    required Color color,
-    required VoidCallback onTap,
-    required BorderRadius radius,
-    required FontWeight fontWeight,
-  }) {
-    return Expanded(
-      child: ClipRRect(
-        borderRadius: radius,
-        child: Material(
-          color: color,
-          child: InkWell(
-            onTap: onTap,
-            child: Center(
-              child: Text(
-                label,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: fontWeight,
-                  color: Colors.white,
-                  letterSpacing: -0.2,
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
   }
 }
 

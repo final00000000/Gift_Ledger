@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/event_book.dart';
 import '../services/storage_service.dart';
+import '../services/event_book_list_computation_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/lunar_utils.dart';
 import '../widgets/event_book_card.dart';
@@ -18,6 +19,8 @@ class EventBookListScreen extends StatefulWidget {
 
 class _EventBookListScreenState extends State<EventBookListScreen> {
   final StorageService _db = StorageService();
+  final EventBookListComputationService _computationService =
+      const EventBookListComputationService();
   List<EventBook> _eventBooks = [];
   Map<int, int> _giftCounts = {};
   bool _isLoading = true;
@@ -47,19 +50,17 @@ class _EventBookListScreenState extends State<EventBookListScreen> {
     setState(() => _isLoading = true);
     try {
       final books = await _db.getAllEventBooks();
-      
-      // Load gift counts for each book
-      final counts = <int, int>{};
-      for (var book in books) {
-        if (book.id != null) {
-          counts[book.id!] = await _db.getEventBookGiftCount(book.id!);
-        }
-      }
+      final bookIds = books.where((book) => book.id != null).map((book) => book.id!).toList(growable: false);
+      final counts = await _db.getEventBookGiftCounts(bookIds);
+      final snapshot = _computationService.buildSnapshot(
+        eventBooks: books,
+        giftCounts: counts,
+      );
 
       if (mounted) {
         setState(() {
-          _eventBooks = books;
-          _giftCounts = counts;
+          _eventBooks = snapshot.eventBooks;
+          _giftCounts = snapshot.giftCounts;
           _isLoading = false;
         });
       }
@@ -81,21 +82,25 @@ class _EventBookListScreenState extends State<EventBookListScreen> {
       builder: (context) => _EventBookForm(
         eventBook: eventBook,
         onSubmit: (newBook) async {
+          final navigator = Navigator.of(context);
+          final messenger = ScaffoldMessenger.of(context);
+
           try {
             if (eventBook == null) {
               await _db.insertEventBook(newBook);
             } else {
               await _db.updateEventBook(newBook);
             }
-            if (mounted) {
-              Navigator.pop(context);
-              _loadData();
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text(eventBook == null ? '已创建' : '已更新')),
-              );
-            }
+            if (!mounted) return;
+
+            navigator.pop();
+            _loadData();
+            messenger.showSnackBar(
+              SnackBar(content: Text(eventBook == null ? '已创建' : '已更新')),
+            );
           } catch (e) {
-            ScaffoldMessenger.of(context).showSnackBar(
+            if (!mounted) return;
+            messenger.showSnackBar(
               SnackBar(content: Text('保存失败: $e')),
             );
           }
@@ -117,21 +122,23 @@ class _EventBookListScreenState extends State<EventBookListScreen> {
           ),
           FilledButton(
             onPressed: () async {
+              final navigator = Navigator.of(context);
+              final messenger = ScaffoldMessenger.of(context);
+
               try {
                 await _db.deleteEventBook(eventBook.id!);
-                if (mounted) {
-                  Navigator.pop(context); // Close dialog
-                  _loadData();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('已删除')),
-                  );
-                }
+                if (!mounted) return;
+
+                navigator.pop(); // Close dialog
+                _loadData();
+                messenger.showSnackBar(
+                  const SnackBar(content: Text('已删除')),
+                );
               } catch (e) {
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('删除失败: $e')),
-                  );
-                }
+                if (!mounted) return;
+                messenger.showSnackBar(
+                  SnackBar(content: Text('删除失败: $e')),
+                );
               }
             },
             style: FilledButton.styleFrom(backgroundColor: Colors.red),

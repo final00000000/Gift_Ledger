@@ -4,6 +4,7 @@ import '../models/gift.dart';
 import '../models/guest.dart';
 import '../services/storage_service.dart';
 import '../services/security_service.dart';
+import '../services/statistics_computation_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/chart_widgets.dart';
 import '../widgets/empty_state.dart';
@@ -11,16 +12,50 @@ import '../widgets/orbit_map.dart';
 import '../utils/security_unlock.dart';
 import '../widgets/insight_card.dart';
 
+abstract class StatisticsStorage {
+  void addListener(VoidCallback listener);
+  void removeListener(VoidCallback listener);
+  Future<List<Gift>> getAllGifts();
+  Future<List<Guest>> getAllGuests();
+}
+
+class _StatisticsStorageAdapter implements StatisticsStorage {
+  _StatisticsStorageAdapter(this._storageService);
+
+  final StorageService _storageService;
+
+  @override
+  void addListener(VoidCallback listener) =>
+      _storageService.addListener(listener);
+
+  @override
+  Future<List<Gift>> getAllGifts() => _storageService.getAllGifts();
+
+  @override
+  Future<List<Guest>> getAllGuests() => _storageService.getAllGuests();
+
+  @override
+  void removeListener(VoidCallback listener) =>
+      _storageService.removeListener(listener);
+}
+
 class StatisticsScreen extends StatefulWidget {
-  const StatisticsScreen({super.key});
+  const StatisticsScreen({
+    super.key,
+    this.storageService,
+  });
+
+  final StatisticsStorage? storageService;
 
   @override
   StatisticsScreenState createState() => StatisticsScreenState();
 }
 
 class StatisticsScreenState extends State<StatisticsScreen> {
-  final StorageService _db = StorageService();
+  late final StatisticsStorage _db;
   final SecurityService _securityService = SecurityService();
+  final StatisticsComputationService _statisticsComputationService =
+      const StatisticsComputationService();
 
   List<Gift> _allGifts = [];
   Map<int, Guest> _guestMap = {};
@@ -28,20 +63,20 @@ class StatisticsScreenState extends State<StatisticsScreen> {
   List<int> _availableYears = [];
   int? _selectedYear;
   bool _isLoading = true;
+  int _dataVersion = 0;
 
   // 缓存年份筛选结果，避免重复计算
   List<Gift>? _cachedYearFilteredGifts;
   int? _cachedYear;
+  int? _cachedDataVersion;
 
   // 智能洞察数据
-  double? _receivedTrend;
-  double? _mostCommonAmount;
-  String? _mostFrequentContact;
-  int _mostFrequentContactCount = 0;
+  List<InsightData> _insights = const [];
 
   @override
   void initState() {
     super.initState();
+    _db = widget.storageService ?? _StatisticsStorageAdapter(StorageService());
     // 监听 StorageService 变化，自动刷新数据
     _db.addListener(_onDataChanged);
     _loadData();
@@ -66,26 +101,32 @@ class StatisticsScreenState extends State<StatisticsScreen> {
     try {
       final gifts = await _db.getAllGifts();
       final guests = await _db.getAllGuests();
-
-      final years = gifts.map((gift) => gift.date.year).toSet().toList()
-        ..sort((a, b) => b.compareTo(a));
-      final selectedYear = _selectedYear != null && years.contains(_selectedYear)
-          ? _selectedYear
-          : null;
+      final snapshot = _statisticsComputationService.buildSnapshot(
+        gifts: gifts,
+        guests: guests,
+        selectedYear: _selectedYear,
+      );
 
       if (mounted) {
         setState(() {
-          _allGifts = gifts;
-          _guestMap = {for (var g in guests) g.id!: g};
-          _availableYears = years;
-          _selectedYear = selectedYear;
+          _allGifts = snapshot.allGifts;
+          _guestMap = snapshot.guestMap;
+          _availableYears = snapshot.availableYears;
+          _selectedYear = snapshot.selectedYear;
+          _cachedYearFilteredGifts = snapshot.yearFilteredGifts;
+          _cachedYear = snapshot.selectedYear;
+          _cachedDataVersion = _dataVersion;
+          _insights = snapshot.insights
+              .map((insight) => InsightData(
+                    title: insight.title,
+                    value: insight.value,
+                    description: insight.description,
+                    icon: insight.icon,
+                  ))
+              .toList(growable: false);
           _isLoading = false;
-          // 清除缓存，因为数据已更新
-          _cachedYearFilteredGifts = null;
-          _cachedYear = null;
+          _dataVersion += 1;
         });
-        // 计算洞察数据
-        _calculateInsights(_allGifts, _guestMap);
       }
     } catch (e) {
       debugPrint('Error loading statistics: $e');
@@ -98,135 +139,6 @@ class StatisticsScreenState extends State<StatisticsScreen> {
   // 公开的刷新方法
   void refreshData() {
     _loadData();
-  }
-
-  /// 计算智能洞察数据
-  void _calculateInsights(List<Gift> allGifts, Map<int, Guest> guestMap) {
-    if (allGifts.isEmpty) return;
-
-    final now = DateTime.now();
-    final thisMonth = DateTime(now.year, now.month, 1);
-    final lastMonth = DateTime(now.year, now.month - 1, 1);
-    final lastMonthEnd = thisMonth.subtract(const Duration(days: 1));
-
-    // 计算本月和上月的收礼/送礼总额
-    double thisMonthReceived = 0;
-    double lastMonthReceived = 0;
-
-    // 统计金额频率和联系人频率
-    final amountCount = <double, int>{};
-    final contactCount = <int, int>{};
-
-    for (final gift in allGifts) {
-      // 本月数据
-      if (gift.date.isAfter(thisMonth.subtract(const Duration(seconds: 1)))) {
-        if (gift.isReceived) {
-          thisMonthReceived += gift.amount;
-        }
-      }
-      // 上月数据
-      else if (gift.date.isAfter(lastMonth.subtract(const Duration(seconds: 1))) &&
-          gift.date.isBefore(lastMonthEnd.add(const Duration(days: 1)))) {
-        if (gift.isReceived) {
-          lastMonthReceived += gift.amount;
-        }
-      }
-
-      // 统计金额频率
-      amountCount[gift.amount] = (amountCount[gift.amount] ?? 0) + 1;
-
-      // 统计联系人频率
-      if (gift.guestId != null) {
-        contactCount[gift.guestId!] = (contactCount[gift.guestId!] ?? 0) + 1;
-      }
-    }
-
-    // 计算环比变化
-    if (lastMonthReceived > 0) {
-      _receivedTrend = ((thisMonthReceived - lastMonthReceived) / lastMonthReceived) * 100;
-    } else if (thisMonthReceived > 0) {
-      _receivedTrend = 100;
-    } else {
-      _receivedTrend = null;
-    }
-
-    // 找出最常见金额
-    if (amountCount.isNotEmpty) {
-      var maxCount = 0;
-      double? mostCommon;
-      amountCount.forEach((amount, count) {
-        if (count > maxCount) {
-          maxCount = count;
-          mostCommon = amount;
-        }
-      });
-      _mostCommonAmount = mostCommon;
-    }
-
-    // 找出最频繁联系人
-    if (contactCount.isNotEmpty) {
-      var maxCount = 0;
-      int? mostFrequentId;
-      contactCount.forEach((guestId, count) {
-        if (count > maxCount) {
-          maxCount = count;
-          mostFrequentId = guestId;
-        }
-      });
-      if (mostFrequentId != null && guestMap.containsKey(mostFrequentId)) {
-        _mostFrequentContact = guestMap[mostFrequentId]!.name;
-        _mostFrequentContactCount = maxCount;
-      }
-    }
-  }
-
-  /// 构建智能洞察数据
-  List<InsightData> _buildInsights() {
-    final insights = <InsightData>[];
-
-    // 环比变化洞察
-    if (_receivedTrend != null) {
-      final trend = _receivedTrend!;
-      final isUp = trend >= 0;
-      insights.add(InsightData(
-        title: '本月收礼趋势',
-        value: '${isUp ? "增长" : "下降"} ${trend.abs().toStringAsFixed(1)}%',
-        description: '相比上月',
-        icon: isUp ? Icons.trending_up_rounded : Icons.trending_down_rounded,
-      ));
-    }
-
-    // 最常见金额洞察
-    if (_mostCommonAmount != null) {
-      insights.add(InsightData(
-        title: '最常见礼金金额',
-        value: '¥${_mostCommonAmount!.toStringAsFixed(0)}',
-        description: '出现频率最高',
-        icon: Icons.attach_money_rounded,
-      ));
-    }
-
-    // 最频繁联系人洞察
-    if (_mostFrequentContact != null) {
-      insights.add(InsightData(
-        title: '最常往来联系人',
-        value: _mostFrequentContact!,
-        description: '共 $_mostFrequentContactCount 次往来',
-        icon: Icons.person_rounded,
-      ));
-    }
-
-    // 如果没有足够数据，添加默认洞察
-    if (insights.isEmpty) {
-      insights.add(const InsightData(
-        title: '开始记录',
-        value: '添加更多记录解锁洞察',
-        description: '智能分析您的礼金往来',
-        icon: Icons.auto_awesome,
-      ));
-    }
-
-    return insights;
   }
 
   @override
@@ -255,9 +167,12 @@ class StatisticsScreenState extends State<StatisticsScreen> {
                               children: [
                                 Text(
                                   '统计分析',
-                                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                                    fontWeight: FontWeight.w700,
-                                  ),
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .headlineMedium
+                                      ?.copyWith(
+                                        fontWeight: FontWeight.w700,
+                                      ),
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
@@ -278,7 +193,8 @@ class StatisticsScreenState extends State<StatisticsScreen> {
                                 margin: const EdgeInsets.only(right: 8),
                                 decoration: BoxDecoration(
                                   color: isUnlocked
-                                      ? AppTheme.primaryColor.withValues(alpha: 0.08)
+                                      ? AppTheme.primaryColor
+                                          .withValues(alpha: 0.08)
                                       : Colors.grey.withValues(alpha: 0.06),
                                   borderRadius: BorderRadius.circular(10),
                                 ),
@@ -286,14 +202,16 @@ class StatisticsScreenState extends State<StatisticsScreen> {
                                   onPressed: () async {
                                     if (isUnlocked) {
                                       _securityService.lock();
-                                      ScaffoldMessenger.of(context).showSnackBar(
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(
                                         const SnackBar(
                                           content: Text('金额已隐藏'),
                                           duration: Duration(seconds: 1),
                                         ),
                                       );
                                     } else {
-                                      await _securityService.ensureUnlocked(context);
+                                      await _securityService
+                                          .ensureUnlocked(context);
                                     }
                                   },
                                   icon: Icon(
@@ -301,7 +219,9 @@ class StatisticsScreenState extends State<StatisticsScreen> {
                                         ? Icons.visibility_rounded
                                         : Icons.visibility_off_rounded,
                                     size: 20,
-                                    color: isUnlocked ? AppTheme.primaryColor : AppTheme.textSecondary,
+                                    color: isUnlocked
+                                        ? AppTheme.primaryColor
+                                        : AppTheme.textSecondary,
                                   ),
                                 ),
                               );
@@ -320,7 +240,7 @@ class StatisticsScreenState extends State<StatisticsScreen> {
                         // 智能洞察卡片 - 数据足够时才显示
                         if (_allGifts.length >= 3) ...[
                           InsightCard(
-                            insights: _buildInsights(),
+                            insights: _insights,
                             animationDelay: const Duration(milliseconds: 200),
                           ),
                           const SizedBox(height: AppTheme.spacingL),
@@ -352,24 +272,26 @@ class StatisticsScreenState extends State<StatisticsScreen> {
   /// 获取选中分类的记录
   List<Gift> get _filteredGifts {
     if (_selectedCategory == null) return [];
-    return _yearFilteredGifts.where((g) => g.eventType == _selectedCategory).toList()
+    return _yearFilteredGifts
+        .where((g) => g.eventType == _selectedCategory)
+        .toList()
       ..sort((a, b) => b.date.compareTo(a.date));
   }
 
   List<Gift> get _yearFilteredGifts {
-    // 检查缓存是否有效
-    if (_cachedYear == _selectedYear && _cachedYearFilteredGifts != null) {
+    if (_cachedYear == _selectedYear &&
+        _cachedYearFilteredGifts != null &&
+        _cachedDataVersion == _dataVersion) {
       return _cachedYearFilteredGifts!;
     }
 
-    // 缓存失效，重新计算
     final filtered = _selectedYear == null
         ? _allGifts
         : _allGifts.where((g) => g.date.year == _selectedYear).toList();
 
-    // 更新缓存
     _cachedYear = _selectedYear;
     _cachedYearFilteredGifts = filtered;
+    _cachedDataVersion = _dataVersion;
 
     return filtered;
   }
@@ -403,7 +325,8 @@ class StatisticsScreenState extends State<StatisticsScreen> {
         constraints: const BoxConstraints.tightFor(width: selectorWidth),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
-          side: BorderSide(color: AppTheme.textSecondary.withValues(alpha: 0.1)),
+          side:
+              BorderSide(color: AppTheme.textSecondary.withValues(alpha: 0.1)),
         ),
         itemBuilder: (context) => [
           PopupMenuItem<int>(
@@ -414,7 +337,9 @@ class StatisticsScreenState extends State<StatisticsScreen> {
                 Icon(
                   Icons.all_inclusive_rounded,
                   size: 16,
-                  color: _selectedYear == null ? AppTheme.primaryColor : AppTheme.textSecondary,
+                  color: _selectedYear == null
+                      ? AppTheme.primaryColor
+                      : AppTheme.textSecondary,
                 ),
                 const SizedBox(width: 10),
                 Expanded(
@@ -422,8 +347,12 @@ class StatisticsScreenState extends State<StatisticsScreen> {
                     '全部年份',
                     style: TextStyle(
                       fontSize: 13,
-                      fontWeight: _selectedYear == null ? FontWeight.w700 : FontWeight.w500,
-                      color: _selectedYear == null ? AppTheme.primaryColor : AppTheme.textPrimary,
+                      fontWeight: _selectedYear == null
+                          ? FontWeight.w700
+                          : FontWeight.w500,
+                      color: _selectedYear == null
+                          ? AppTheme.primaryColor
+                          : AppTheme.textPrimary,
                     ),
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -440,7 +369,9 @@ class StatisticsScreenState extends State<StatisticsScreen> {
                   Icon(
                     Icons.calendar_today_rounded,
                     size: 16,
-                    color: _selectedYear == year ? AppTheme.primaryColor : AppTheme.textSecondary,
+                    color: _selectedYear == year
+                        ? AppTheme.primaryColor
+                        : AppTheme.textSecondary,
                   ),
                   const SizedBox(width: 10),
                   Expanded(
@@ -448,8 +379,12 @@ class StatisticsScreenState extends State<StatisticsScreen> {
                       '$year年',
                       style: TextStyle(
                         fontSize: 13,
-                        fontWeight: _selectedYear == year ? FontWeight.w700 : FontWeight.w500,
-                        color: _selectedYear == year ? AppTheme.primaryColor : AppTheme.textPrimary,
+                        fontWeight: _selectedYear == year
+                            ? FontWeight.w700
+                            : FontWeight.w500,
+                        color: _selectedYear == year
+                            ? AppTheme.primaryColor
+                            : AppTheme.textPrimary,
                       ),
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -464,7 +399,9 @@ class StatisticsScreenState extends State<StatisticsScreen> {
           width: selectorWidth, // 固定按钮宽度
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
-            color: _selectedYear == null ? Colors.white : AppTheme.primaryColor.withValues(alpha: 0.05),
+            color: _selectedYear == null
+                ? Colors.white
+                : AppTheme.primaryColor.withValues(alpha: 0.05),
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
               color: _selectedYear == null
@@ -474,27 +411,36 @@ class StatisticsScreenState extends State<StatisticsScreen> {
             ),
           ),
           child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween, // 两端对齐，图标在两侧
             children: [
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.calendar_month_rounded,
-                    size: 16,
-                    color: _selectedYear == null ? AppTheme.textSecondary : AppTheme.primaryColor,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    _selectedYear == null ? '全部' : '$_selectedYear',
-                    style: TextStyle(
-                      color: _selectedYear == null ? AppTheme.textPrimary : AppTheme.primaryColor,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 13,
+              Expanded(
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.calendar_month_rounded,
+                      size: 16,
+                      color: _selectedYear == null
+                          ? AppTheme.textSecondary
+                          : AppTheme.primaryColor,
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(
+                        _selectedYear == null ? '全部' : '$_selectedYear',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: _selectedYear == null
+                              ? AppTheme.textPrimary
+                              : AppTheme.primaryColor,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
+              const SizedBox(width: 4),
               Icon(
                 Icons.keyboard_arrow_down_rounded,
                 size: 18,
