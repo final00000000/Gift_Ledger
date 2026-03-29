@@ -2,6 +2,22 @@ name: Build iOS IPA (No Sign)
 
 on:
   workflow_dispatch:
+    inputs:
+      channel:
+        description: 发布通道
+        required: true
+        type: choice
+        options:
+          - stable
+          - beta
+        default: stable
+      release_tag:
+        description: 可选，上传到指定 GitHub Release（如 v1.3.3）
+        required: false
+        type: string
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -9,12 +25,26 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.38.6'
           channel: 'stable'
           cache: true
+
+      - name: Resolve release metadata
+        id: meta
+        run: |
+          python tool/resolve_release_metadata.py \
+            --pubspec pubspec.yaml \
+            --event-name "${{ github.event_name }}" \
+            --input-channel "${{ github.event.inputs.channel }}" \
+            --input-release-tag "${{ github.event.inputs.release_tag }}" \
+            --ref-name "${{ github.ref_name }}" \
+            --platform ios \
+            --github-output "${GITHUB_OUTPUT}"
 
       - name: Install dependencies
         run: flutter pub get
@@ -33,12 +63,21 @@ jobs:
           echo "Found app at: $APP_PATH"
           mkdir -p Payload
           cp -r "$APP_PATH" Payload/
-          zip -r build/ios/unsigned/gift_ledger_unsigned.ipa Payload
+          zip -r "build/ios/unsigned/${{ steps.meta.outputs.asset_name }}" Payload
           rm -rf Payload
 
       - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
         with:
-          name: gift-ledger-ios-${{ github.sha }}
+          name: ${{ steps.meta.outputs.asset_base_name }}
           path: build/ios/unsigned/*.ipa
           retention-days: 7
+
+      - name: Upload unsigned IPA to GitHub Release
+        if: ${{ github.event.inputs.release_tag != '' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.meta.outputs.release_tag }}
+          ASSET_NAME: ${{ steps.meta.outputs.asset_name }}
+        run: |
+          gh release upload "$RELEASE_TAG" "build/ios/unsigned/$ASSET_NAME#$ASSET_NAME" --clobber
