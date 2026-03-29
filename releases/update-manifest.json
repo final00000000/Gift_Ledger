@@ -1,23 +1,35 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-03-26T13:10:56Z",
+  "generatedAt": "2026-03-29T13:44:32Z",
   "channels": {
     "stable": {
       "android": {
-        "version": "1.3.2",
-        "buildNumber": 1030299,
+        "version": "1.3.3",
+        "buildNumber": 1030399,
         "packageType": "apk",
-        "downloadUrl": "https://github.com/final00000000/Gift_Ledger/releases/download/v1.3.2/gift_ledger-stable-android-v1.3.2-build1030299.apk",
-        "sha256": "7fd46c78f813ba48d86e500a34b92c7779a7d9ea3bd18d0ba0cb8a1a99265047",
-        "notes": "列表展示备注与状态标记，修复取消安装后二次拉起，统一应用内更新版本与发布规则。"
+        "downloadUrl": "https://github.com/final00000000/Gift_Ledger/releases/download/v1.3.3/gift_ledger-stable-android-v1.3.3-build1030399-arm64-v8a.apk",
+        "sha256": "86d264adeb68bb28b1356cd659a047ba30390380bc5826f303bf9bd1f8d171a8",
+        "notes": "完整备份与导入增强；默认收送礼设置统一；安全锁定增强；统计筛选与 Android / Windows Release 打包修复。",
+        "variants": {
+          "armeabi-v7a": {
+            "packageType": "apk",
+            "downloadUrl": "https://github.com/final00000000/Gift_Ledger/releases/download/v1.3.3/gift_ledger-stable-android-v1.3.3-build1030399-armeabi-v7a.apk",
+            "sha256": "5dd5f024643b7b7e35bbeb31241d139033b5a5df6a85289c461fbed13b808f03"
+          },
+          "arm64-v8a": {
+            "packageType": "apk",
+            "downloadUrl": "https://github.com/final00000000/Gift_Ledger/releases/download/v1.3.3/gift_ledger-stable-android-v1.3.3-build1030399-arm64-v8a.apk",
+            "sha256": "86d264adeb68bb28b1356cd659a047ba30390380bc5826f303bf9bd1f8d171a8"
+          }
+        }
       },
       "windows": {
-        "version": "1.3.2",
-        "buildNumber": 1030299,
+        "version": "1.3.3",
+        "buildNumber": 1030399,
         "packageType": "exe",
-        "downloadUrl": "https://github.com/final00000000/Gift_Ledger/releases/download/v1.3.2/gift_ledger-stable-windows-v1.3.2-build1030299-setup.exe",
-        "sha256": "8e06c416d65307d2e40fd91930e590c17b01332135a986925aa09bbae1b63547",
-        "notes": "列表展示备注与状态标记，修复取消安装后二次拉起，统一应用内更新版本与发布规则。"
+        "downloadUrl": "https://github.com/final00000000/Gift_Ledger/releases/download/v1.3.3/gift_ledger-stable-windows-v1.3.3-build1030399-setup.exe",
+        "sha256": "bf887754dca5a70905556b5687830983bd05ff05175634bfa9b4b2bae542b990",
+        "notes": "完整备份与导入增强；默认收送礼设置统一；安全锁定增强；统计筛选与 Android / Windows Release 打包修复。"
       }
     },
     "beta": {}
