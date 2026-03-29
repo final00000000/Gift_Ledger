@@ -23,6 +23,7 @@
 - 📊 **统计筛选**：修复统计页年份筛选在窄宽度下的横向溢出问题
 - ℹ️ **更新状态**：iOS / 不支持平台的应用内更新改为明确提示“当前平台不支持”
 - 📦 **Android 发版**：修复 `abiFilters` 与 split APK 发布参数冲突导致的 Release 构建失败
+- 🪟 **Windows 发版**：修复 GitHub Actions 在 PowerShell 下错误使用 bash 续行导致的构建失败
 
 ### 优化
 - ♻️ **服务拆分**：拆分设置、礼金、宾客、活动簿、待处理与统计服务，收敛 StorageService 责任
