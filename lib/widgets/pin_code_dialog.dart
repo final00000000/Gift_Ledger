@@ -57,6 +57,7 @@ class _PinCodeDialogState extends State<PinCodeDialog> with SingleTickerProvider
   // 锁定与次数相关状态
   int _remainingAttempts = 5;
   DateTime? _lockUntil;
+  DateTime? _hintLockUntil;
   Timer? _countdownTimer;
   String _timerText = '';
 
@@ -94,11 +95,13 @@ class _PinCodeDialogState extends State<PinCodeDialog> with SingleTickerProvider
   Future<void> _checkLockoutStatus() async {
     final lockUntil = await _securityService.getLockUntil();
     final remaining = await _securityService.getRemainingAttempts();
+    final hintLockUntil = await _securityService.getHintLockUntil();
 
     if (mounted) {
       setState(() {
         _lockUntil = lockUntil;
         _remainingAttempts = remaining;
+        _hintLockUntil = hintLockUntil;
       });
 
       if (_lockUntil != null) {
@@ -334,6 +337,9 @@ class _PinCodeDialogState extends State<PinCodeDialog> with SingleTickerProvider
     }
 
     final isValid = await _securityService.verifySecurityAnswer(answer);
+    await _checkLockoutStatus();
+    if (!mounted) return;
+
     if (isValid) {
       // 答案正确：进入重置流程，但不要在此处清除“输错 5 次”的锁定记录。
       // 需求：只有当用户真正设置了新密码后，才清除锁定状态；若用户中途关闭，倒计时仍应生效。
@@ -347,11 +353,16 @@ class _PinCodeDialogState extends State<PinCodeDialog> with SingleTickerProvider
           _firstPin = null;
           _answerController.clear();
           _lockUntil = null;
+          _hintLockUntil = null;
           _remainingAttempts = 5;
         });
       }
     } else {
-      CustomToast.show(context, '答案错误', isError: true);
+      if (_hintLockUntil != null) {
+        CustomToast.show(context, '答案错误次数过多，请稍后重试', isError: true);
+      } else {
+        CustomToast.show(context, '答案错误', isError: true);
+      }
       _triggerError();
     }
   }

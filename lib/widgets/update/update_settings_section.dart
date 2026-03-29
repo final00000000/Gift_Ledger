@@ -57,6 +57,8 @@ class UpdateSettingsSection extends StatelessWidget {
         return '正在打开系统安装器';
       case UpdateStateStatus.upToDate:
         return '当前已是最新版本';
+      case UpdateStateStatus.unsupported:
+        return '当前平台不支持应用内更新';
       case UpdateStateStatus.available:
         final version = target?.version;
         if (version == null || version.isEmpty) {
@@ -94,6 +96,7 @@ class UpdateSettingsSection extends StatelessWidget {
       case UpdateStateStatus.installing:
       case UpdateStateStatus.available:
       case UpdateStateStatus.upToDate:
+      case UpdateStateStatus.unsupported:
         return '重新检查';
       case UpdateStateStatus.error:
         return lastSource == UpdateCheckSource.manual ? '重试' : '检查更新';
@@ -118,6 +121,7 @@ class UpdateSettingsSection extends StatelessWidget {
       case UpdateStateStatus.idle:
       case UpdateStateStatus.checking:
       case UpdateStateStatus.upToDate:
+      case UpdateStateStatus.unsupported:
         return '立即更新';
     }
   }
