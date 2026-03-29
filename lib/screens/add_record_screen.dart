@@ -1,15 +1,68 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../models/gift.dart';
 import '../models/guest.dart';
 import '../services/storage_service.dart';
+import '../services/add_record_assist_service.dart';
+import '../services/app_settings_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/custom_toast.dart';
 import '../widgets/custom_numpad.dart';
 import '../widgets/lunar_calendar_picker.dart';
 import '../widgets/add_record/record_note_field.dart';
 import '../utils/record_note_policy.dart';
+
+abstract class AddRecordStorage {
+  Future<List<Guest>> getAllGuests();
+  Future<int> updateGift(Gift gift);
+  Future<int> updateGuest(Guest guest);
+  Future<void> saveGiftWithGuest(Gift gift, Guest guest);
+  Future<int> updateReturnStatus(
+    int giftId, {
+    required bool isReturned,
+    int? relatedRecordId,
+  });
+  Future<List<Gift>> getUnreturnedGifts();
+  Future<List<Gift>> getPendingReceipts();
+}
+
+class _AddRecordStorageAdapter implements AddRecordStorage {
+  _AddRecordStorageAdapter(this._storageService);
+
+  final StorageService _storageService;
+
+  @override
+  Future<List<Guest>> getAllGuests() => _storageService.getAllGuests();
+
+  @override
+  Future<List<Gift>> getPendingReceipts() => _storageService.getPendingReceipts();
+
+  @override
+  Future<List<Gift>> getUnreturnedGifts() => _storageService.getUnreturnedGifts();
+
+  @override
+  Future<void> saveGiftWithGuest(Gift gift, Guest guest) =>
+      _storageService.saveGiftWithGuest(gift, guest);
+
+  @override
+  Future<int> updateGift(Gift gift) => _storageService.updateGift(gift);
+
+  @override
+  Future<int> updateGuest(Guest guest) => _storageService.updateGuest(guest);
+
+  @override
+  Future<int> updateReturnStatus(
+    int giftId, {
+    required bool isReturned,
+    int? relatedRecordId,
+  }) {
+    return _storageService.updateReturnStatus(
+      giftId,
+      isReturned: isReturned,
+      relatedRecordId: relatedRecordId,
+    );
+  }
+}
 
 class AddRecordScreen extends StatefulWidget {
   final Gift? editingGift;
@@ -22,7 +75,7 @@ class AddRecordScreen extends StatefulWidget {
   final bool? prefillIsReceived;
   final int? relatedGiftId; // 关联的原记录ID
   final int? initialEventBookId; // 初始活动簿ID
-  final Object? storageService;
+  final AddRecordStorage? storageService;
 
   const AddRecordScreen({
     super.key,
@@ -43,7 +96,9 @@ class AddRecordScreen extends StatefulWidget {
 }
 
 class _AddRecordScreenState extends State<AddRecordScreen> {
-  late final dynamic _db;
+  late final AddRecordStorage _db;
+  final AddRecordAssistService _addRecordAssistService =
+      const AddRecordAssistService();
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _noteController = TextEditingController();
 
@@ -66,7 +121,7 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
   @override
   void initState() {
     super.initState();
-    _db = widget.storageService ?? StorageService();
+    _db = widget.storageService ?? _AddRecordStorageAdapter(StorageService());
     _loadSettings();
     _loadGuests();
     _nameController.addListener(_onNameChanged);
@@ -139,14 +194,14 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
   }
 
   Future<void> _loadSettings() async {
-    final prefs = await SharedPreferences.getInstance();
-
     // 编辑/预填模式下，避免默认设置异步覆盖用户意图
     if (widget.editingGift != null || widget.prefillIsReceived != null) return;
+
+    final defaultIsReceived = await AppSettingsService().getDefaultIsReceived();
     if (!mounted) return;
 
     setState(() {
-      _isReceived = prefs.getBool('default_is_received') ?? true;
+      _isReceived = defaultIsReceived;
     });
   }
 
@@ -163,10 +218,7 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
         _showSuggestions = false;
       });
     } else {
-      _filteredGuests = _existingGuests
-          .where((g) => g.name.toLowerCase().contains(query))
-          .take(5)
-          .toList();
+      _filteredGuests = _addRecordAssistService.filterGuests(_existingGuests, query);
       setState(() {
         _showSuggestions = _filteredGuests.isNotEmpty;
       });
@@ -593,24 +645,16 @@ class _AddRecordScreenState extends State<AddRecordScreen> {
     try {
       final pendingGifts = await getPendingGifts();
       final guests = await _db.getAllGuests();
+      final matchResult = _addRecordAssistService.findMatchingGift(
+        guestName: guestName,
+        eventType: _eventType,
+        pendingGifts: pendingGifts,
+        guests: guests,
+      );
 
-      // 找到匹配该姓名的联系人
-      final matchedGuest = guests.where((g) => g.name == guestName).toList();
-      if (matchedGuest.isEmpty) return;
+      if (matchResult == null || !mounted) return;
 
-      final guestId = matchedGuest.first.id;
-
-      // 找到该联系人的待处理记录，且事件类型相同
-      final matchedGifts = pendingGifts
-          .where((g) =>
-              g.guestId == guestId &&
-              g.eventType == _eventType &&
-              g.relatedRecordId == null)
-          .toList();
-
-      if (matchedGifts.isEmpty || !mounted) return;
-
-      final matchedGift = matchedGifts.first;
+      final matchedGift = matchResult.matchedGift;
 
       // 弹出关联建议对话框
       final shouldLink = await showDialog<bool>(
