@@ -33,9 +33,9 @@ flutter doctor
 - **仅保留 `armeabi-v7a` / `arm64-v8a`**
 - **不再发布 `x86 / x86_64 / universal.apk`**
 - 本地与 CI 都遵循同一 ABI 约束
-- `android/app/build.gradle` 已通过 `abiFilters` 限定为：
-  - `armeabi-v7a`
-  - `arm64-v8a`
+- 正式发布的 ABI 约束统一由构建命令与 GitHub Actions 参数控制：
+  - `--split-per-abi`
+  - `--target-platform android-arm,android-arm64`
 
 ### 本地构建：按 ABI 拆分 APK
 
@@ -171,7 +171,7 @@ docs/RELEASE_VERSION_RULES.md
 - `armeabi-v7a`
 - `arm64-v8a`
 
-`x86 / x86_64 / universal.apk` 已从正式发布链路中移除。
+`x86 / x86_64 / universal.apk` 已从正式发布链路中移除，ABI 由发布命令显式约束。
 
 ---
 
