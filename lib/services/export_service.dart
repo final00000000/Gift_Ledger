@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
+import '../models/event_book.dart';
 import '../models/gift.dart';
 import '../models/guest.dart';
 import 'storage_service.dart';
@@ -26,10 +27,12 @@ class ImportResult {
 class _ExportPayload {
   final List<Map<String, dynamic>> guests;
   final List<Map<String, dynamic>> gifts;
+  final List<Map<String, dynamic>> eventBooks;
 
   const _ExportPayload({
     required this.guests,
     required this.gifts,
+    required this.eventBooks,
   });
 }
 
@@ -44,11 +47,13 @@ class ExportService {
     try {
       final guests = await _storage.getAllGuests();
       final gifts = await _storage.getAllGifts();
+      final eventBooks = await _storage.getAllEventBooks();
       final result = await compute(
         _exportToJsonInBackground,
         _ExportPayload(
           guests: guests.map((guest) => guest.toMap()).toList(),
           gifts: gifts.map((gift) => gift.toMap()).toList(),
+          eventBooks: eventBooks.map((eventBook) => eventBook.toMap()).toList(),
         ),
       );
 
@@ -64,10 +69,12 @@ class ExportService {
 
   static String _exportToJsonInBackground(_ExportPayload payload) {
     final data = {
-      'version': '1.0',
+      'version': '2.0',
+      'exportMode': 'full_backup',
       'exportDate': DateTime.now().toIso8601String(),
       'guests': payload.guests,
       'gifts': payload.gifts,
+      'eventBooks': payload.eventBooks,
     };
 
     return const JsonEncoder.withIndent('  ').convert(data);
@@ -77,11 +84,13 @@ class ExportService {
     try {
       final guests = await _storage.getAllGuests();
       final gifts = await _storage.getAllGifts();
+      final eventBooks = await _storage.getAllEventBooks();
       final fileBytes = await compute(
         _exportToExcelInBackground,
         _ExportPayload(
           guests: guests.map((guest) => guest.toMap()).toList(),
           gifts: gifts.map((gift) => gift.toMap()).toList(),
+          eventBooks: eventBooks.map((eventBook) => eventBook.toMap()).toList(),
         ),
       );
 
@@ -308,6 +317,21 @@ class ExportService {
           }
         }
 
+      if (data['eventBooks'] != null) {
+        final eventBooksList = data['eventBooks'] as List;
+        final eventBookIdMap = <int, int>{};
+
+        for (final bookMap in eventBooksList) {
+          try {
+            final oldId = bookMap['id'] as int;
+            final eventBook = EventBook.fromMap(Map<String, dynamic>.from(bookMap));
+            final newId = await _storage.insertEventBook(eventBook.copyWith(id: null));
+            eventBookIdMap[oldId] = newId;
+          } catch (e) {
+            errors.add('导入活动簿失败: $bookMap - $e');
+          }
+        }
+
         if (data['gifts'] != null) {
           final List giftsList = data['gifts'];
           for (var gMap in giftsList) {
@@ -316,13 +340,24 @@ class ExportService {
               final int? targetGuestId = guestIdMap[oldGuestId];
 
               if (targetGuestId != null) {
+                final oldEventBookId = gMap['eventBookId'] as int?;
+                final targetEventBookId = oldEventBookId == null
+                    ? null
+                    : eventBookIdMap[oldEventBookId];
                 final gift = Gift(
                   guestId: targetGuestId,
                   amount: (gMap['amount'] as num).toDouble(),
-                  isReceived: gMap['isReceived'] == 1 || gMap['isReceived'] == true, // 兼容多种格式
+                  isReceived: gMap['isReceived'] == 1 || gMap['isReceived'] == true,
                   eventType: gMap['eventType'],
+                  eventBookId: targetEventBookId,
                   date: DateTime.parse(gMap['date']),
                   note: gMap['note'],
+                  relatedRecordId: null,
+                  isReturned: gMap['isReturned'] == 1 || gMap['isReturned'] == true,
+                  returnDueDate: gMap['returnDueDate'] != null
+                      ? DateTime.tryParse(gMap['returnDueDate'])
+                      : null,
+                  remindedCount: (gMap['remindedCount'] as int?) ?? 0,
                 );
                 await _storage.insertGift(gift);
                 newGifts++;
@@ -334,6 +369,38 @@ class ExportService {
             }
           }
         }
+      } else if (data['gifts'] != null) {
+        final List giftsList = data['gifts'];
+        for (var gMap in giftsList) {
+          try {
+            final int oldGuestId = gMap['guestId'];
+            final int? targetGuestId = guestIdMap[oldGuestId];
+
+            if (targetGuestId != null) {
+              final gift = Gift(
+                guestId: targetGuestId,
+                amount: (gMap['amount'] as num).toDouble(),
+                isReceived: gMap['isReceived'] == 1 || gMap['isReceived'] == true,
+                eventType: gMap['eventType'],
+                date: DateTime.parse(gMap['date']),
+                note: gMap['note'],
+                relatedRecordId: null,
+                isReturned: gMap['isReturned'] == 1 || gMap['isReturned'] == true,
+                returnDueDate: gMap['returnDueDate'] != null
+                    ? DateTime.tryParse(gMap['returnDueDate'])
+                    : null,
+                remindedCount: (gMap['remindedCount'] as int?) ?? 0,
+              );
+              await _storage.insertGift(gift);
+              newGifts++;
+            } else {
+              errors.add('跳过记录: 找不到对应宾客 (Old ID: $oldGuestId)');
+            }
+          } catch (e) {
+            errors.add('导入礼金记录失败: $gMap - $e');
+          }
+        }
+      }
       }
     } catch (e) {
       errors.add('文件解析失败: $e');
@@ -389,7 +456,15 @@ class ExportService {
 
         // 获取现有所有礼金记录用于重复检测
         final existingGifts = await _storage.getAllGifts();
-        
+        final seenGiftKeys = existingGifts.map((gift) => [
+          gift.guestId,
+          gift.amount,
+          gift.isReceived,
+          gift.date.year,
+          gift.date.month,
+          gift.date.day,
+        ].join('|')).toSet();
+
         // 处理数据行（跳过表头）
         for (int rowIndex = 1; rowIndex < sheet.rows.length; rowIndex++) {
           var row = sheet.rows[rowIndex];
@@ -451,14 +526,15 @@ class ExportService {
               newGuests++;
             }
 
-            // 重复检测：同一个人、同样金额、同一天、同样类型 = 重复
-            final isDuplicate = existingGifts.any((gift) =>
-                gift.guestId == guestId &&
-                gift.amount == amountVal &&
-                gift.isReceived == isReceived &&
-                gift.date.year == dateVal.year &&
-                gift.date.month == dateVal.month &&
-                gift.date.day == dateVal.day);
+            final giftKey = [
+              guestId,
+              amountVal,
+              isReceived,
+              dateVal.year,
+              dateVal.month,
+              dateVal.day,
+            ].join('|');
+            final isDuplicate = seenGiftKeys.contains(giftKey);
 
             if (isDuplicate) {
               errors.add('第${rowIndex + 1}行: 检测到重复数据，已跳过 ($nameVal, ¥$amountVal, ${_dateFormat.format(dateVal)})');
@@ -474,8 +550,9 @@ class ExportService {
               date: dateVal,
               note: noteVal.isNotEmpty ? noteVal : null,
             );
-            
+
             await _storage.insertGift(gift);
+            seenGiftKeys.add(giftKey);
             newGifts++;
 
           } catch (e) {
