@@ -255,9 +255,10 @@ jobs:
         run: flutter pub get
 
       - name: Build Windows release
+        shell: pwsh
         run: |
-          flutter build windows --release \
-            --build-name "${{ steps.meta.outputs.semver }}" \
+          flutter build windows --release `
+            --build-name "${{ steps.meta.outputs.semver }}" `
             --build-number "${{ steps.meta.outputs.build_number }}"
 
       - name: Install Inno Setup

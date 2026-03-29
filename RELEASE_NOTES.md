@@ -14,6 +14,7 @@
 - 📊 `fix(statistics)`: 修复统计页年份筛选在窄屏下的溢出问题
 - ℹ️ `fix(update-ui)`: 不支持应用内更新的平台改为明确展示 unsupported 状态
 - 📦 `fix(android-release)`: 修复 `abiFilters` 与 split APK 发布参数冲突，恢复 Android Release 构建
+- 🪟 `fix(windows-release)`: 修复 GitHub Actions 在 PowerShell 下的 Windows 构建命令续行问题
 - ♻️ `refactor(app-services)`: 拆分 StorageService 职责并下沉页面计算逻辑
 - 🧪 `test(flows)`: 新增覆盖主导航、新增记录、记录列表、待处理与统计筛选的关键流程测试
 
