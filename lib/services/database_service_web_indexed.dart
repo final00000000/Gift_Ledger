@@ -274,6 +274,26 @@ class NativeDatabaseService {
     return gifts.length;
   }
 
+  Future<Map<int, int>> getEventBookGiftCounts(List<int> eventBookIds) async {
+    await _ensureInitialized();
+    if (eventBookIds.isEmpty) {
+      return const <int, int>{};
+    }
+
+    final targetIds = eventBookIds.toSet();
+    final counts = <int, int>{};
+
+    for (final gift in _cachedGifts!) {
+      final eventBookId = gift.eventBookId;
+      if (eventBookId == null || !targetIds.contains(eventBookId)) {
+        continue;
+      }
+      counts[eventBookId] = (counts[eventBookId] ?? 0) + 1;
+    }
+
+    return counts;
+  }
+
   Future<double> getTotalReceived({bool includeEventBooks = true}) async {
     final gifts = await getAllGifts();
     final filtered = includeEventBooks
