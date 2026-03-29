@@ -1,26 +1,30 @@
-# Release Notes - v1.3.2
+# Release Notes - v1.3.3
 
-## 🎉 随礼记 v1.3.2
+## 🎉 随礼记 v1.3.3
 
-发布日期：2026-03-26
+发布日期：2026-03-29
 
 ---
 
 ## ✨ 更新内容
 
-- ✨ `feat(note-preview)`: 首页与记录列表展示备注摘要、状态标记与自定义内容外显
-- ✨ `feat(add-record)`: 添加记录页支持多行备注、120 字限制与输入反馈
-- ✨ `feat(update-ui)`: 设置页 / 关于页整合更新入口，支持红点提示与版本忽略
-- 🐛 `fix(update-installer)`: 修复取消安装后二次拉起与部分更新状态不同步问题
-- 🩹 `fix(update-workflow)`: 修复 Windows 安装器发布失败，补齐更新 manifest 产物
-- 📦 `chore(update-version)`: 统一 Android / Windows 产物命名、版本号与发布规则
+- 💾 `feat(backup)`: JSON 导出升级为完整备份，新增活动簿与更多字段的导入恢复
+- ⚙️ `feat(default-entry)`: 单条新增与批量新增统一遵循默认收礼 / 送礼设置
+- 🔐 `fix(security)`: PIN 与密保答案增加分级锁定与失败控制
+- 📊 `fix(statistics)`: 修复统计页年份筛选在窄屏下的溢出问题
+- ℹ️ `fix(update-ui)`: 不支持应用内更新的平台改为明确展示 unsupported 状态
+- 📦 `fix(android-release)`: 修复 `abiFilters` 与 split APK 发布参数冲突，恢复 Android Release 构建
+- ♻️ `refactor(app-services)`: 拆分 StorageService 职责并下沉页面计算逻辑
+- 🧪 `test(flows)`: 新增覆盖主导航、新增记录、记录列表、待处理与统计筛选的关键流程测试
 
 ---
 
 ## 📦 发布产物
 
-- Android：`gift_ledger-stable-android-v1.3.2-build1030299.apk`
-- Windows：`gift_ledger-stable-windows-v1.3.2-build1030299-setup.exe`
+- Android：
+  - `gift_ledger-stable-android-v1.3.3-build1030399-armeabi-v7a.apk`
+  - `gift_ledger-stable-android-v1.3.3-build1030399-arm64-v8a.apk`
+- Windows：`gift_ledger-stable-windows-v1.3.3-build1030399-setup.exe`
 
 ---
 
