@@ -5,7 +5,7 @@ import 'package:gift_ledger/models/guest.dart';
 import 'package:gift_ledger/screens/record_list_screen.dart';
 import 'package:gift_ledger/widgets/records/record_summary_card.dart';
 
-class FakeRecordListStorageService {
+class FakeRecordListStorageService implements RecordListStorage {
   FakeRecordListStorageService({
     required this.gifts,
     required this.guests,
@@ -15,13 +15,20 @@ class FakeRecordListStorageService {
   final List<Guest> guests;
   final List<VoidCallback> _listeners = [];
 
+  @override
   void addListener(VoidCallback listener) => _listeners.add(listener);
 
+  @override
   void removeListener(VoidCallback listener) => _listeners.remove(listener);
 
+  @override
   Future<List<Gift>> getAllGifts() async => gifts;
 
+  @override
   Future<List<Guest>> getAllGuests() async => guests;
+
+  @override
+  Future<int> deleteGift(int id) async => 1;
 }
 
 void main() {

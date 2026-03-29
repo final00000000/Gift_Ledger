@@ -7,29 +7,34 @@ import 'package:gift_ledger/widgets/add_record/record_note_field.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-class RecordingStorageService {
+class RecordingStorageService implements AddRecordStorage {
   Gift? lastUpdatedGift;
   Guest? lastUpdatedGuest;
   Gift? lastCreatedGift;
   Guest? lastCreatedGuest;
 
+  @override
   Future<List<Guest>> getAllGuests() async => [];
 
+  @override
   Future<int> updateGift(Gift gift) async {
     lastUpdatedGift = gift;
     return 1;
   }
 
+  @override
   Future<int> updateGuest(Guest guest) async {
     lastUpdatedGuest = guest;
     return 1;
   }
 
+  @override
   Future<void> saveGiftWithGuest(Gift gift, Guest guest) async {
     lastCreatedGift = gift;
     lastCreatedGuest = guest;
   }
 
+  @override
   Future<int> updateReturnStatus(
     int giftId, {
     required bool isReturned,
@@ -38,8 +43,10 @@ class RecordingStorageService {
     return 1;
   }
 
+  @override
   Future<List<Gift>> getUnreturnedGifts() async => [];
 
+  @override
   Future<List<Gift>> getPendingReceipts() async => [];
 }
 
