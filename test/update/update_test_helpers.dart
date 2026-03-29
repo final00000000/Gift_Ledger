@@ -204,6 +204,10 @@ class FakeSettingsStorageService {
   Future<bool> getEventBooksEnabled() async => true;
 
   Future<void> setShowHomeAmounts(bool value) async {}
+
+  Future<bool> getDefaultIsReceived() async => true;
+
+  Future<void> setDefaultIsReceived(bool value) async {}
 }
 
 class FakeTemplateService {

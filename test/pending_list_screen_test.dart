@@ -7,7 +7,7 @@ import 'package:gift_ledger/models/guest.dart';
 import 'package:gift_ledger/screens/pending_list_screen.dart';
 import 'package:gift_ledger/widgets/records/pending_gift_card.dart';
 
-class FakePendingListStorageService {
+class FakePendingListStorageService implements PendingListStorage {
   FakePendingListStorageService({
     required this.unreturnedGifts,
     required this.pendingReceipts,
@@ -19,15 +19,30 @@ class FakePendingListStorageService {
   final List<Guest> guests;
   final List<VoidCallback> _listeners = [];
 
+  @override
   void addListener(VoidCallback listener) => _listeners.add(listener);
 
+  @override
   void removeListener(VoidCallback listener) => _listeners.remove(listener);
 
+  @override
   Future<List<Gift>> getUnreturnedGifts() async => unreturnedGifts;
 
+  @override
   Future<List<Gift>> getPendingReceipts() async => pendingReceipts;
 
+  @override
   Future<List<Guest>> getAllGuests() async => guests;
+
+  @override
+  Future<int> incrementRemindedCount(int giftId) async => 1;
+
+  @override
+  Future<int> updateReturnStatus(
+    int giftId, {
+    required bool isReturned,
+    int? relatedRecordId,
+  }) async => 1;
 }
 
 class DelayedPendingListStorageService extends FakePendingListStorageService {
