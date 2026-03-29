@@ -146,7 +146,7 @@ class _AboutAppScreenState extends State<AboutAppScreen> {
                   ),
                   const SizedBox(height: 8),
                   const Text(
-                    '当前 iOS 版本不支持应用内检查更新。你可以前往 GitHub 查看最新发布，并重新下载最新 IPA。',
+                    '当前 iOS 版本不支持应用内检查更新。你可以前往 GitHub 查看最新发布，并下载未签名 IPA 后自行签名安装。',
                     style: TextStyle(
                       fontSize: 13,
                       height: 1.5,

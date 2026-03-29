@@ -135,7 +135,7 @@ flutter build web --release
 
 ## 🍎 iOS 构建
 
-> **注意**：iOS 安装包仅支持在 macOS + Xcode 环境中本地构建并签名导出。
+> **注意**：iOS 提供的是**未签名 IPA**，仅适用于开发者自行签名、重打包或验证；不支持 App 内更新。
 
 ### 本地无签名校验构建
 
@@ -143,6 +143,21 @@ flutter build web --release
 flutter pub get
 flutter build ios --release --no-codesign
 ```
+
+### GitHub Actions 构建未签名 IPA
+
+工作流：
+
+```text
+.github/workflows/ios_build.yml
+```
+
+说明：
+
+- 在 `macos-latest` 上执行 `flutter build ios --release --no-codesign`
+- 自动导出未签名 IPA
+- 可选择上传为 GitHub Actions Artifact
+- 如填写 `release_tag`，会额外上传到对应 GitHub Release
 
 ---
 

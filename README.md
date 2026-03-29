@@ -35,7 +35,7 @@ Android / Windows 版本现已支持 **App 内置更新检查**。
 | **Android** | [📦 APK 下载](https://github.com/final00000000/Gift_Ledger/releases/latest) | 支持 App 内更新；Release 仅提供 ARMv7 / ARM64 两种 APK，不再提供 x86 / x86_64 包 |
 | **Windows** | [📦 EXE 安装器下载](https://github.com/final00000000/Gift_Ledger/releases/latest) | 推荐使用安装器升级，支持 App 内拉起安装流程 |
 | **Web** | [📦 ZIP 下载](https://github.com/final00000000/Gift_Ledger/releases/latest) | 部署到静态托管 |
-| **iOS** | 暂无常驻预编译版本 | 仅支持在 macOS + Xcode 环境本地构建（见 [BUILD.md](./BUILD.md)） |
+| **iOS** | [📦 IPA 下载](https://github.com/final00000000/Gift_Ledger/releases/latest) | 提供未签名 IPA，仅供开发者自行签名或验证使用；不支持 App 内更新 |
 
 ---
 

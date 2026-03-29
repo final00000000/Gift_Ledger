@@ -35,7 +35,7 @@ English | [简体中文](./README.md)
 | **Android** | [📦 APK Download](https://github.com/final00000000/Gift_Ledger/releases/latest) | Supports in-app updates; Releases only include ARMv7 / ARM64 APKs and exclude x86 / x86_64 |
 | **Windows** | [📦 EXE Installer Download](https://github.com/final00000000/Gift_Ledger/releases/latest) | Recommended for upgrade and in-app installer handoff |
 | **Web** | [📦 ZIP Download](https://github.com/final00000000/Gift_Ledger/releases/latest) | Deploy to static hosting |
-| **iOS** | No always-on prebuilt package | Local build only on macOS with Xcode (see [docs/BUILD_EN.md](./docs/BUILD_EN.md)) |
+| **iOS** | [📦 IPA Download](https://github.com/final00000000/Gift_Ledger/releases/latest) | Provides an unsigned IPA for developer-side signing or verification only; no in-app update support |
 
 ---
 
