@@ -5,6 +5,7 @@ import '../models/event_book.dart';
 import '../models/gift.dart';
 import '../models/guest.dart';
 import '../services/storage_service.dart';
+import '../services/app_settings_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/lunar_utils.dart';
 import '../widgets/custom_toast.dart';
@@ -20,9 +21,11 @@ class BatchAddScreen extends StatefulWidget {
 }
 
 class _BatchRow {
+  _BatchRow({required this.isReceived});
+
   final TextEditingController nameController = TextEditingController();
   final TextEditingController amountController = TextEditingController();
-  bool isReceived = true;
+  bool isReceived;
   String relationship = RelationshipTypes.friend;
   DateTime? customDate; // If null, use event book date
   String key = UniqueKey().toString();
@@ -37,7 +40,8 @@ class _BatchAddScreenState extends State<BatchAddScreen> {
   final StorageService _db = StorageService();
   final List<_BatchRow> _rows = [];
   bool _isSaving = false;
-  
+  bool _defaultIsReceived = true;
+
   // Header display only
   late DateTime _defaultDate;
   late String _defaultEventType;
@@ -47,10 +51,21 @@ class _BatchAddScreenState extends State<BatchAddScreen> {
     super.initState();
     _defaultDate = widget.eventBook.date;
     _defaultEventType = widget.eventBook.type;
-    // Initial rows
     for (int i = 0; i < 3; i++) {
-      _addNewRow();
+      _rows.add(_BatchRow(isReceived: _defaultIsReceived));
     }
+    _loadDefaultIsReceived();
+  }
+
+  Future<void> _loadDefaultIsReceived() async {
+    final value = await AppSettingsService().getDefaultIsReceived();
+    if (!mounted) return;
+    setState(() {
+      _defaultIsReceived = value;
+      for (final row in _rows) {
+        row.isReceived = value;
+      }
+    });
   }
 
   @override
@@ -63,7 +78,7 @@ class _BatchAddScreenState extends State<BatchAddScreen> {
 
   void _addNewRow() {
     setState(() {
-      _rows.add(_BatchRow());
+      _rows.add(_BatchRow(isReceived: _defaultIsReceived));
     });
   }
 
@@ -183,12 +198,7 @@ class _BatchAddScreenState extends State<BatchAddScreen> {
 
       // 批量插入新客人
       if (guestsToInsert.isNotEmpty) {
-        for (final guest in guestsToInsert) {
-          final guestId = await _db.insertGuest(guest);
-          if (guestId > 0) {
-            guestMap[guest.name] = guest.copyWith(id: guestId);
-          }
-        }
+        guestMap.addAll(await _db.insertGuestsAndBuildNameMap(guestsToInsert));
       }
 
       // 第二遍：创建礼金记录

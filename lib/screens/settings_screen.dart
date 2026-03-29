@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:provider/provider.dart';
@@ -99,8 +98,7 @@ class SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _loadSettings() async {
     // 并行加载所有设置
-    final Future<SharedPreferences> prefsFuture =
-        SharedPreferences.getInstance();
+    final Future<bool> defaultIsReceivedFuture = _db.getDefaultIsReceived();
     final Future<bool> useFuzzyAmountFuture =
         _templateService.getUseFuzzyAmount();
     final Future<bool> notificationsEnabledFuture =
@@ -112,7 +110,7 @@ class SettingsScreenState extends State<SettingsScreen> {
         _securityService.getSecurityMode();
 
     final results = await Future.wait<dynamic>([
-      prefsFuture,
+      defaultIsReceivedFuture,
       useFuzzyAmountFuture,
       notificationsEnabledFuture,
       statsIncludeEventBooksFuture,
@@ -120,10 +118,9 @@ class SettingsScreenState extends State<SettingsScreen> {
       securityModeFuture,
     ]);
 
-    final prefs = results[0] as SharedPreferences;
     if (mounted) {
       setState(() {
-        _defaultIsReceived = prefs.getBool('default_is_received') ?? true;
+        _defaultIsReceived = results[0] as bool;
         _useFuzzyAmount = results[1] as bool;
         _notificationsEnabled = results[2] as bool;
         _statsIncludeEventBooks = results[3] as bool;
@@ -134,8 +131,7 @@ class SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _saveSetting(bool value) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('default_is_received', value);
+    await _db.setDefaultIsReceived(value);
     setState(() {
       _defaultIsReceived = value;
     });
@@ -257,6 +253,7 @@ class SettingsScreenState extends State<SettingsScreen> {
       case UpdateStateStatus.idle:
       case UpdateStateStatus.checking:
       case UpdateStateStatus.upToDate:
+      case UpdateStateStatus.unsupported:
         return (showRedDot: true, chipText: '发现新版本');
     }
   }
