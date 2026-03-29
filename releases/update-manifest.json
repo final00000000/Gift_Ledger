@@ -9,7 +9,7 @@
         "packageType": "apk",
         "downloadUrl": "https://github.com/final00000000/Gift_Ledger/releases/download/v1.3.3/gift_ledger-stable-android-v1.3.3-build1030399-arm64-v8a.apk",
         "sha256": "86d264adeb68bb28b1356cd659a047ba30390380bc5826f303bf9bd1f8d171a8",
-        "notes": "完整备份与导入增强；默认收送礼设置统一；安全锁定增强；统计筛选与 Android / Windows Release 打包修复。",
+        "notes": "v1.3.3 更新内容\n- 支持完整备份与活动簿导入恢复\n- 单条新增与批量新增统一默认收礼 / 送礼设置\n- PIN 与密保答案增加分级锁定\n- 修复统计页年份筛选在窄屏下的溢出问题\n- 修复 Android / Windows Release 打包流程",
         "variants": {
           "armeabi-v7a": {
             "packageType": "apk",
@@ -29,7 +29,7 @@
         "packageType": "exe",
         "downloadUrl": "https://github.com/final00000000/Gift_Ledger/releases/download/v1.3.3/gift_ledger-stable-windows-v1.3.3-build1030399-setup.exe",
         "sha256": "bf887754dca5a70905556b5687830983bd05ff05175634bfa9b4b2bae542b990",
-        "notes": "完整备份与导入增强；默认收送礼设置统一；安全锁定增强；统计筛选与 Android / Windows Release 打包修复。"
+        "notes": "v1.3.3 更新内容\n- 支持完整备份与活动簿导入恢复\n- 单条新增与批量新增统一默认收礼 / 送礼设置\n- PIN 与密保答案增加分级锁定\n- 修复统计页年份筛选在窄屏下的溢出问题\n- 修复 Android / Windows Release 打包流程"
       }
     },
     "beta": {}
