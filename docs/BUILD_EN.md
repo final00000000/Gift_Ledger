@@ -106,7 +106,7 @@ flutter build web --release
 
 ## 🍎 iOS
 
-> iOS installable packages are only supported through local build and signing on macOS with Xcode.
+> iOS distribution currently provides an **unsigned IPA** only. It is intended for developer-side signing, repackaging, or verification, and does not support in-app updates.
 
 ### Local unsigned verification
 
@@ -114,3 +114,18 @@ flutter build web --release
 flutter pub get
 flutter build ios --release --no-codesign
 ```
+
+### GitHub Actions unsigned IPA build
+
+Workflow:
+
+```text
+.github/workflows/ios_build.yml
+```
+
+Notes:
+
+- builds `flutter build ios --release --no-codesign` on `macos-latest`
+- exports an unsigned IPA automatically
+- uploads the IPA as a workflow artifact
+- optionally uploads it to a GitHub Release when `release_tag` is provided
