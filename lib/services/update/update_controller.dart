@@ -20,6 +20,7 @@ enum UpdateStateStatus {
   installing,
   available,
   upToDate,
+  unsupported,
   error,
 }
 
@@ -111,7 +112,7 @@ class UpdateController extends ChangeNotifier {
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) {
       _clearPendingInstallTracking();
       _state = UpdateState(
-        status: UpdateStateStatus.upToDate,
+        status: UpdateStateStatus.unsupported,
         lastSource: source,
       );
       notifyListeners();

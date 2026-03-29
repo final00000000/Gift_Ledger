@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
-import 'package:flutter/foundation.dart';
+import 'dart:math';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:crypto/crypto.dart';
@@ -23,9 +23,12 @@ class SecurityService extends ChangeNotifier with WidgetsBindingObserver {
   static const _keyHash = 'sec_hash';
   static const _keyFailCount = 'sec_fail_count';
   static const _keyLockUntil = 'sec_lock_until';
+  static const _keyLockoutRound = 'sec_lockout_round';
   static const _keyHintQuestion = 'sec_hint_question';  // 密码提示问题
   static const _keyHintAnswerHash = 'sec_hint_answer';  // 答案哈希
   static const _keyHintSalt = 'sec_hint_salt';          // 答案盐值
+  static const _keyHintFailCount = 'sec_hint_fail_count';
+  static const _keyHintLockUntil = 'sec_hint_lock_until';
   // 后台超时自动上锁的阈值：30s（更符合“快速离开就锁”的安全预期）
   static const _lockTimeout = Duration(seconds: 30);
   static const int _maxAttempts = 5;
@@ -136,6 +139,9 @@ class SecurityService extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> clearLockout() async {
     await _storage.delete(key: _keyFailCount);
     await _storage.delete(key: _keyLockUntil);
+    await _storage.delete(key: _keyLockoutRound);
+    await _storage.delete(key: _keyHintFailCount);
+    await _storage.delete(key: _keyHintLockUntil);
   }
 
   /// 获取锁定截止时间（如果没被锁定则返回 null）
@@ -149,6 +155,29 @@ class SecurityService extends ChangeNotifier with WidgetsBindingObserver {
     return null;
   }
 
+  Future<DateTime?> getHintLockUntil() async {
+    final timeStr = await _storage.read(key: _keyHintLockUntil);
+    if (timeStr == null) return null;
+    final time = DateTime.tryParse(timeStr);
+    if (time != null && time.isAfter(DateTime.now())) {
+      return time;
+    }
+    return null;
+  }
+
+  Duration _lockoutDurationForRound(int round) {
+    if (round <= 1) return const Duration(minutes: 1);
+    if (round == 2) return const Duration(minutes: 5);
+    if (round == 3) return const Duration(minutes: 15);
+    return const Duration(hours: 1);
+  }
+
+  String _generateSalt([int length = 32]) {
+    final random = Random.secure();
+    final bytes = List<int>.generate(length, (_) => random.nextInt(256));
+    return base64UrlEncode(bytes);
+  }
+
   /// 设置安全模式
   Future<void> setSecurityMode(String mode) async {
     await _storage.write(key: _keyMode, value: mode);
@@ -159,8 +188,7 @@ class SecurityService extends ChangeNotifier with WidgetsBindingObserver {
 
     if (mode == modeNone) {
       // 关闭安全锁时，只清除失败计数和锁定时间，保留密码和提示数据
-      await _storage.delete(key: _keyFailCount);
-      await _storage.delete(key: _keyLockUntil);
+      await clearLockout();
       isUnlocked.value = true;
       notifyListeners();
     } else {
@@ -175,47 +203,47 @@ class SecurityService extends ChangeNotifier with WidgetsBindingObserver {
     await _storage.delete(key: _keyHash);
     await _storage.delete(key: _keyFailCount);
     await _storage.delete(key: _keyLockUntil);
+    await _storage.delete(key: _keyLockoutRound);
     await _storage.delete(key: _keyHintQuestion);
     await _storage.delete(key: _keyHintSalt);
     await _storage.delete(key: _keyHintAnswerHash);
+    await _storage.delete(key: _keyHintFailCount);
+    await _storage.delete(key: _keyHintLockUntil);
   }
 
   /// 验证密码
   Future<bool> verifyPin(String inputPin) async {
-    // 1. 检查是否在锁定中
     final lockUntil = await getLockUntil();
     if (lockUntil != null) return false;
 
     try {
       final salt = await _storage.read(key: _keySalt);
       final storedHash = await _storage.read(key: _keyHash);
-      
+
       if (salt == null || storedHash == null) return false;
-      
+
       final inputHash = _generateHash(inputPin, salt);
       final isValid = inputHash == storedHash;
-      
+
       if (isValid) {
-        // 成功：重置计数和锁定
-        await _storage.delete(key: _keyFailCount);
-        await _storage.delete(key: _keyLockUntil);
+        await clearLockout();
         unlock();
       } else {
-        // 失败：增加计数
         final countStr = await _storage.read(key: _keyFailCount) ?? '0';
         final newCount = (int.tryParse(countStr) ?? 0) + 1;
-        
+
         if (newCount >= _maxAttempts) {
-          // 达到上限：设置锁定时间
-          // 输错次数达到上限后的锁定时长：30s
-          final lockTime = DateTime.now().add(const Duration(seconds: 30));
+          final roundStr = await _storage.read(key: _keyLockoutRound) ?? '0';
+          final nextRound = (int.tryParse(roundStr) ?? 0) + 1;
+          final lockTime = DateTime.now().add(_lockoutDurationForRound(nextRound));
           await _storage.write(key: _keyLockUntil, value: lockTime.toIso8601String());
-          await _storage.delete(key: _keyFailCount); // 锁定后重置计数
+          await _storage.write(key: _keyLockoutRound, value: nextRound.toString());
+          await _storage.delete(key: _keyFailCount);
         } else {
           await _storage.write(key: _keyFailCount, value: newCount.toString());
         }
       }
-      
+
       return isValid;
     } catch (e) {
       debugPrint('Error verifying PIN: $e');
@@ -225,18 +253,12 @@ class SecurityService extends ChangeNotifier with WidgetsBindingObserver {
 
   /// 设置新密码
   Future<void> setPin(String newPin) async {
-    // 1. 生成随机盐 (使用时间戳模拟，生产环境可用更强的随机源)
-    final salt = DateTime.now().toIso8601String() + newPin.length.toString();
-    
-    // 2. 计算哈希
+    final salt = _generateSalt();
     final hash = _generateHash(newPin, salt);
-    
-    // 3. 存储
+
     await _storage.write(key: _keySalt, value: salt);
     await _storage.write(key: _keyHash, value: hash);
-    // 重置之前的失败计数
-    await _storage.delete(key: _keyFailCount);
-    await _storage.delete(key: _keyLockUntil);
+    await clearLockout();
   }
 
   /// 是否已设置密码
@@ -271,14 +293,15 @@ class SecurityService extends ChangeNotifier with WidgetsBindingObserver {
 
   /// 设置密码提示问题和答案
   Future<void> setSecurityHint(String question, String answer) async {
-    // 生成答案的盐和哈希（答案不区分大小写）
-    final salt = DateTime.now().toIso8601String() + question.length.toString();
+    final salt = _generateSalt();
     final normalizedAnswer = answer.trim().toLowerCase();
     final hash = _generateHash(normalizedAnswer, salt);
 
     await _storage.write(key: _keyHintQuestion, value: question);
     await _storage.write(key: _keyHintSalt, value: salt);
     await _storage.write(key: _keyHintAnswerHash, value: hash);
+    await _storage.delete(key: _keyHintFailCount);
+    await _storage.delete(key: _keyHintLockUntil);
   }
 
   /// 获取密码提示问题
@@ -295,6 +318,9 @@ class SecurityService extends ChangeNotifier with WidgetsBindingObserver {
 
   /// 验证密码提示答案
   Future<bool> verifySecurityAnswer(String answer) async {
+    final lockUntil = await getHintLockUntil();
+    if (lockUntil != null) return false;
+
     try {
       final salt = await _storage.read(key: _keyHintSalt);
       final storedHash = await _storage.read(key: _keyHintAnswerHash);
@@ -303,7 +329,24 @@ class SecurityService extends ChangeNotifier with WidgetsBindingObserver {
 
       final normalizedAnswer = answer.trim().toLowerCase();
       final inputHash = _generateHash(normalizedAnswer, salt);
-      return inputHash == storedHash;
+      final isValid = inputHash == storedHash;
+
+      if (isValid) {
+        await _storage.delete(key: _keyHintFailCount);
+        await _storage.delete(key: _keyHintLockUntil);
+      } else {
+        final countStr = await _storage.read(key: _keyHintFailCount) ?? '0';
+        final newCount = (int.tryParse(countStr) ?? 0) + 1;
+        if (newCount >= _maxAttempts) {
+          final lockTime = DateTime.now().add(const Duration(minutes: 15));
+          await _storage.write(key: _keyHintLockUntil, value: lockTime.toIso8601String());
+          await _storage.delete(key: _keyHintFailCount);
+        } else {
+          await _storage.write(key: _keyHintFailCount, value: newCount.toString());
+        }
+      }
+
+      return isValid;
     } catch (e) {
       debugPrint('Error verifying security answer: $e');
       return false;
@@ -316,6 +359,7 @@ class SecurityService extends ChangeNotifier with WidgetsBindingObserver {
     await _storage.delete(key: _keyHash);
     await _storage.delete(key: _keyFailCount);
     await _storage.delete(key: _keyLockUntil);
+    await _storage.delete(key: _keyLockoutRound);
     // 重置安全模式为无锁
     await _storage.write(key: _keyMode, value: modeNone);
     isUnlocked.value = true;
@@ -327,5 +371,7 @@ class SecurityService extends ChangeNotifier with WidgetsBindingObserver {
     await _storage.delete(key: _keyHintQuestion);
     await _storage.delete(key: _keyHintSalt);
     await _storage.delete(key: _keyHintAnswerHash);
+    await _storage.delete(key: _keyHintFailCount);
+    await _storage.delete(key: _keyHintLockUntil);
   }
 }

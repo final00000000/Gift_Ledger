@@ -41,6 +41,13 @@ class _AboutAppScreenState extends State<AboutAppScreen> {
     await controller.checkForUpdates(source: UpdateCheckSource.manual);
     final state = controller.state;
 
+    if (state.status == UpdateStateStatus.unsupported) {
+      if (mounted) {
+        CustomToast.show(context, '当前 iOS 版本不支持应用内检查更新，请前往 GitHub 查看最新发布');
+      }
+      return;
+    }
+
     if (state.status == UpdateStateStatus.error) {
       if (mounted) {
         CustomToast.show(context, '当前网络不可用，或暂时无法访问更新服务');

@@ -65,8 +65,10 @@ class AppBuildInfoService {
         return UpdatePlatform.android;
       case TargetPlatform.windows:
         return UpdatePlatform.windows;
+      case TargetPlatform.iOS:
+        throw UnsupportedError('iOS in-app updates are not supported.');
       default:
-        return UpdatePlatform.android; // iOS 等平台暂不支持自动更新，返回占位值
+        throw UnsupportedError('Current platform is not supported for app updates.');
     }
   }
 }
