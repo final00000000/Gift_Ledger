@@ -36,7 +36,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         '--platform',
         required=True,
-        choices=('android', 'windows'),
+        choices=('android', 'windows', 'ios'),
         help='目标平台，用于生成资产名称',
     )
     parser.add_argument('--github-output', help='GitHub Actions 输出文件路径')
@@ -195,6 +195,15 @@ def build_asset_names(
         return {
             'asset_base_name': asset_base_name,
             'asset_name': f'{asset_base_name}.exe',
+        }
+
+    if platform == 'ios':
+        asset_base_name = (
+            f'{app_name}-{channel}-ios-v{semver}-build{build_number}-unsigned'
+        )
+        return {
+            'asset_base_name': asset_base_name,
+            'asset_name': f'{asset_base_name}.ipa',
         }
 
     raise ValueError(f'Unsupported platform: {platform}')
