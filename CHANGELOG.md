@@ -25,6 +25,9 @@
 - 📦 **Android 发版**：修复 `abiFilters` 与 split APK 发布参数冲突导致的 Release 构建失败
 - 🪟 **Windows 发版**：修复 GitHub Actions 在 PowerShell 下错误使用 bash 续行导致的构建失败
 
+### 发布
+- 🍎 **iOS 未签名 IPA**：补充 GitHub Actions 构建与 Release 上传链路，支持在 Release 中附带未签名 IPA
+
 ### 优化
 - ♻️ **服务拆分**：拆分设置、礼金、宾客、活动簿、待处理与统计服务，收敛 StorageService 责任
 - 🧠 **计算下沉**：首页、记录列表、待处理、活动簿、统计页计算逻辑抽离为独立 computation service
