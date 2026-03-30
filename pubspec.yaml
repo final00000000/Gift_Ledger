@@ -13,7 +13,7 @@ dependencies:
   cupertino_icons: ^1.0.8
   provider: ^6.1.1              # 状态管理
   flutter_riverpod: ^2.6.1      # 网络层状态管理
-  dio: ^5.7.0                   # HTTP 客户端
+  dio: ^5.9.0                   # HTTP 客户端
   sqflite: ^2.3.0
   sqflite_common_ffi: ^2.3.0  # 桌面端数据库支持
   sqlite3_flutter_libs: ^0.5.0 # 包含 sqlite3.dll
@@ -36,7 +36,6 @@ dependencies:
   url_launcher: ^6.2.5
   font_awesome_flutter: ^10.7.0
   flutter_native_splash: ^2.4.4  # 启动页优化（降级以兼容 excel)
-  dio: ^5.9.0
   package_info_plus: ^8.3.1
   open_filex: ^4.7.0
 

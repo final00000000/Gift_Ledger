@@ -1,7 +1,13 @@
 /// API 配置
 class ApiConfig {
-  // 后端 API 地址（修改为实际地址）
-  static const String baseUrl = 'http://localhost:8081';
+  // 编译时可通过 --dart-define=API_BASE_URL=http://xxx 覆盖
+  // Android 真机：flutter run --dart-define=API_BASE_URL=http://192.168.x.x:8081
+  // Android 模拟器默认：http://10.0.2.2:8081
+  // Windows 桌面端：http://localhost:8081
+  static const String baseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: 'http://10.0.2.2:8081',
+  );
 
   // 超时配置
   static const Duration connectTimeout = Duration(seconds: 10);
