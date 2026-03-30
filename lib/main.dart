@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:provider/provider.dart';
+import 'package:provider/provider.dart' as provider;
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';  // 启动页优化
 import 'theme/app_theme.dart';
 import 'screens/dashboard_screen.dart';
@@ -36,7 +37,7 @@ void main() async {
   ));
 
   // 3. 🔑 优先启动 UI - 确保 Flutter 首帧尽快渲染
-  runApp(const GiftMoneyTrackerApp());
+  runApp(const ProviderScope(child: GiftMoneyTrackerApp()));
 
   // 4. 🔑 首帧渲染完成后，立即移除启动页（无缝切换）
   WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -68,11 +69,11 @@ class GiftMoneyTrackerApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MultiProvider(
+    return provider.MultiProvider(
       providers: [
         // 使用 ChangeNotifierProvider 延迟创建，避免启动时立即实例化
-        ChangeNotifierProvider(create: (_) => StorageService()),
-        ChangeNotifierProvider(create: (_) => SecurityService()),
+        provider.ChangeNotifierProvider(create: (_) => StorageService()),
+        provider.ChangeNotifierProvider(create: (_) => SecurityService()),
       ],
       child: MaterialApp(
         title: '随礼记',

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../theme/app_theme.dart';
 import '../widgets/custom_toast.dart';
 import '../widgets/export_dialogs.dart';
@@ -9,7 +10,9 @@ import '../services/notification_service.dart';
 import '../services/storage_service.dart';
 import '../services/security_service.dart';
 import '../widgets/pin_code_dialog.dart';
+import '../providers/api_providers.dart';
 import 'template_settings_screen.dart';
+import 'login_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -339,6 +342,41 @@ class SettingsScreenState extends State<SettingsScreen> {
                           }),
                         ),
                       ],
+                    ),
+                    const SizedBox(height: 16),
+                    // 账户
+                    Consumer(
+                      builder: (context, ref, _) {
+                        final authState = ref.watch(authStateProvider);
+                        return _buildSectionCard(
+                          title: '账户',
+                          children: [
+                            if (authState.isAuthenticated)
+                              _buildNavigationTile(
+                                icon: Icons.logout_rounded,
+                                iconColor: Colors.redAccent,
+                                title: '退出登录',
+                                subtitle: authState.email ?? '',
+                                onTap: () {
+                                  ref.read(authStateProvider.notifier).logout();
+                                  ref.read(authTokenProvider.notifier).state = null;
+                                  if (mounted) CustomToast.show(context, '已退出登录');
+                                },
+                              )
+                            else
+                              _buildNavigationTile(
+                                icon: Icons.login_rounded,
+                                iconColor: AppTheme.primaryColor,
+                                title: '登录 / 注册',
+                                subtitle: '登录后可同步数据到云端',
+                                onTap: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(builder: (_) => const LoginScreen()),
+                                ),
+                              ),
+                          ],
+                        );
+                      },
                     ),
                     const SizedBox(height: 16),
                     // 关于

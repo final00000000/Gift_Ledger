@@ -11,6 +11,8 @@ dependencies:
     sdk: flutter
   cupertino_icons: ^1.0.8
   provider: ^6.1.1              # 状态管理
+  flutter_riverpod: ^2.6.1      # 网络层状态管理
+  dio: ^5.7.0                   # HTTP 客户端
   sqflite: ^2.3.0
   sqflite_common_ffi: ^2.3.0  # 桌面端数据库支持
   sqlite3_flutter_libs: ^0.5.0 # 包含 sqlite3.dll

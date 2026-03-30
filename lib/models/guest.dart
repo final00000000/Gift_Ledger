@@ -33,6 +33,27 @@ class Guest {
     );
   }
 
+  // JSON 序列化（用于 API）
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'name': name,
+      'relationship': relationship,
+      'phone': phone,
+      'note': note,
+    };
+  }
+
+  factory Guest.fromJson(Map<String, dynamic> json) {
+    return Guest(
+      id: json['id'] as int?,
+      name: json['name'] as String,
+      relationship: json['relationship'] as String,
+      phone: json['phone'] as String?,
+      note: json['note'] as String?,
+    );
+  }
+
   Guest copyWith({
     int? id,
     String? name,

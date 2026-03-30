@@ -41,6 +41,31 @@ class EventBook {
     );
   }
 
+  // JSON 序列化（用于 API）
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'name': name,
+      'type': type,
+      'date': date.toIso8601String(),
+      'lunarDate': lunarDate,
+      'note': note,
+      'createdAt': createdAt.toIso8601String(),
+    };
+  }
+
+  factory EventBook.fromJson(Map<String, dynamic> json) {
+    return EventBook(
+      id: json['id'] as int?,
+      name: json['name'] as String,
+      type: json['type'] as String,
+      date: DateTime.parse(json['date'] as String),
+      lunarDate: json['lunarDate'] as String?,
+      note: json['note'] as String?,
+      createdAt: DateTime.parse(json['createdAt'] as String),
+    );
+  }
+
   EventBook copyWith({
     int? id,
     String? name,

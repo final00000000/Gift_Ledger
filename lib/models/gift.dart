@@ -58,10 +58,47 @@ class Gift {
       note: map['note'] as String?,
       relatedRecordId: map['relatedRecordId'] as int?,
       isReturned: map['isReturned'] == 1,
-      returnDueDate: map['returnDueDate'] != null 
-          ? DateTime.parse(map['returnDueDate'] as String) 
+      returnDueDate: map['returnDueDate'] != null
+          ? DateTime.parse(map['returnDueDate'] as String)
           : null,
       remindedCount: (map['remindedCount'] as int?) ?? 0,
+    );
+  }
+
+  // JSON 序列化（用于 API）
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'guestId': guestId,
+      'amount': amount,
+      'isReceived': isReceived,
+      'eventType': eventType,
+      'eventBookId': eventBookId,
+      'date': date.toIso8601String(),
+      'note': note,
+      'relatedRecordId': relatedRecordId,
+      'isReturned': isReturned,
+      'returnDueDate': returnDueDate?.toIso8601String(),
+      'remindedCount': remindedCount,
+    };
+  }
+
+  factory Gift.fromJson(Map<String, dynamic> json) {
+    return Gift(
+      id: json['id'] as int?,
+      guestId: json['guestId'] as int,
+      amount: (json['amount'] as num).toDouble(),
+      isReceived: json['isReceived'] as bool,
+      eventType: json['eventType'] as String,
+      eventBookId: json['eventBookId'] as int?,
+      date: DateTime.parse(json['date'] as String),
+      note: json['note'] as String?,
+      relatedRecordId: json['relatedRecordId'] as int?,
+      isReturned: json['isReturned'] as bool? ?? false,
+      returnDueDate: json['returnDueDate'] != null
+          ? DateTime.parse(json['returnDueDate'] as String)
+          : null,
+      remindedCount: (json['remindedCount'] as int?) ?? 0,
     );
   }
 
