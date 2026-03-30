@@ -4,6 +4,7 @@ import '../models/event_book.dart';
 import '../models/gift.dart';
 import '../models/guest.dart';
 import '../services/storage_service.dart';
+import '../services/event_book_detail_computation_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/gift_list_item.dart';
 import '../widgets/empty_state.dart';
@@ -26,6 +27,8 @@ class EventBookDetailScreen extends StatefulWidget {
 class _EventBookDetailScreenState extends State<EventBookDetailScreen> {
   final StorageService _db = StorageService();
   final SecurityService _securityService = SecurityService();
+  final EventBookDetailComputationService _computationService =
+      const EventBookDetailComputationService();
 
   /// 验证安全锁，返回是否通过验证（统一入口）
   Future<bool> _verifySecurityLock() => _securityService.ensureUnlocked(context);
@@ -75,11 +78,18 @@ class _EventBookDetailScreenState extends State<EventBookDetailScreen> {
       ]);
 
       if (mounted) {
+        final snapshot = _computationService.buildSnapshot(
+          gifts: results[0] as List<Gift>,
+          guests: results[3] as List<Guest>,
+          totalReceived: results[1] as double,
+          totalSent: results[2] as double,
+        );
+
         setState(() {
-          _gifts = results[0] as List<Gift>;
-          _totalReceived = results[1] as double;
-          _totalSent = results[2] as double;
-          _guestMap = {for (var g in (results[3] as List<Guest>)) g.id!: g};
+          _gifts = snapshot.gifts;
+          _totalReceived = snapshot.totalReceived;
+          _totalSent = snapshot.totalSent;
+          _guestMap = snapshot.guestMap;
           _isLoading = false;
         });
       }
@@ -397,12 +407,12 @@ class _EventBookDetailScreenState extends State<EventBookDetailScreen> {
                 Expanded(
                   child: OutlinedButton.icon(
                     onPressed: () async {
+                      final navigator = Navigator.of(context);
                       if (!await _verifySecurityLock()) return;
                       if (!mounted) return;
 
-                      Navigator.pop(context);
-                      final result = await Navigator.push(
-                        context,
+                      navigator.pop();
+                      final result = await navigator.push(
                         MaterialPageRoute(
                           builder: (context) => AddRecordScreen(editingGift: gift, editingGuest: guest),
                         ),
@@ -418,10 +428,11 @@ class _EventBookDetailScreenState extends State<EventBookDetailScreen> {
                 Expanded(
                   child: FilledButton.icon(
                     onPressed: () async {
+                      final navigator = Navigator.of(context);
                       if (!await _verifySecurityLock()) return;
                       if (!mounted) return;
 
-                      Navigator.pop(context);
+                      navigator.pop();
                       _confirmDelete(gift, guestName);
                     },
                     icon: const Icon(Icons.delete_outline),
@@ -478,14 +489,17 @@ class _EventBookDetailScreenState extends State<EventBookDetailScreen> {
           ),
           FilledButton(
             onPressed: () async {
+              final navigator = Navigator.of(context);
+              final messenger = ScaffoldMessenger.of(context);
+
               await _db.deleteGift(gift.id!);
-              if (mounted) {
-                Navigator.pop(context);
-                _loadData();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('已删除')),
-                );
-              }
+              if (!mounted) return;
+
+              navigator.pop();
+              _loadData();
+              messenger.showSnackBar(
+                const SnackBar(content: Text('已删除')),
+              );
             },
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             child: const Text('删除'),

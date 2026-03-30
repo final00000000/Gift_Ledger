@@ -37,6 +37,7 @@ class GroupedTimeline extends StatefulWidget {
   final Function(Gift gift, Guest? guest)? onEdit;
   final Function(Gift gift)? onDelete;
   final Duration animationDelay;
+  final bool enableAnimations;
 
   const GroupedTimeline({
     super.key,
@@ -46,6 +47,7 @@ class GroupedTimeline extends StatefulWidget {
     this.onEdit,
     this.onDelete,
     this.animationDelay = Duration.zero,
+    this.enableAnimations = true,
   });
 
   @override
@@ -170,6 +172,7 @@ class _GroupedTimelineState extends State<GroupedTimeline> {
             group: groups[groupIndex],
             animationDelay: widget.animationDelay +
                 Duration(milliseconds: groupIndex * 100),
+            enableAnimations: widget.enableAnimations,
           ),
           ...List.generate(
             groups[groupIndex].gifts.length,
@@ -200,6 +203,7 @@ class _GroupedTimelineState extends State<GroupedTimeline> {
                 showDateHeader: showDateHeader,
                 index: globalIndex,
                 animationDelay: widget.animationDelay,
+                enableAnimations: widget.enableAnimations,
                 onTap: widget.onTap != null ? () => widget.onTap!(gift, guest) : null,
                 onEdit: widget.onEdit != null ? () => widget.onEdit!(gift, guest) : null,
                 onDelete: widget.onDelete != null ? () => widget.onDelete!(gift) : null,
@@ -224,10 +228,12 @@ class _GroupedTimelineState extends State<GroupedTimeline> {
 class _GroupHeader extends StatefulWidget {
   final GroupedGifts group;
   final Duration animationDelay;
+  final bool enableAnimations;
 
   const _GroupHeader({
     required this.group,
     required this.animationDelay,
+    required this.enableAnimations,
   });
 
   @override
@@ -256,6 +262,14 @@ class _GroupHeaderState extends State<_GroupHeader>
         _controller.forward();
       }
     });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!widget.enableAnimations && _controller.value != 1) {
+      _controller.value = 1;
+    }
   }
 
   @override
@@ -294,6 +308,10 @@ class _GroupHeaderState extends State<_GroupHeader>
   Widget build(BuildContext context) {
     final color = _getGroupColor();
 
+    if (!widget.enableAnimations) {
+      return _buildContent(color);
+    }
+
     return AnimatedBuilder(
       animation: _animation,
       builder: (context, child) {
@@ -305,77 +323,81 @@ class _GroupHeaderState extends State<_GroupHeader>
           ),
         );
       },
-      child: Padding(
-        padding: const EdgeInsets.only(
-          left: 16,
-          right: 16,
-          top: 20,
-          bottom: 8,
-        ),
-        child: Row(
-          children: [
-            // 图标
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(
-                _getGroupIcon(),
-                color: color,
-                size: 18,
-              ),
+      child: _buildContent(color),
+    );
+  }
+
+  Widget _buildContent(Color color) {
+    return Padding(
+      padding: const EdgeInsets.only(
+        left: 16,
+        right: 16,
+        top: 20,
+        bottom: 8,
+      ),
+      child: Row(
+        children: [
+          // 图标
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(10),
             ),
-            const SizedBox(width: 12),
-            // 标题
-            Text(
-              widget.group.title,
+            child: Icon(
+              _getGroupIcon(),
+              color: color,
+              size: 18,
+            ),
+          ),
+          const SizedBox(width: 12),
+          // 标题
+          Text(
+            widget.group.title,
+            style: TextStyle(
+              color: color,
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(width: 8),
+          // 数量徽章
+          Container(
+            padding: const EdgeInsets.symmetric(
+              horizontal: 8,
+              vertical: 3,
+            ),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Text(
+              '${widget.group.gifts.length}',
               style: TextStyle(
                 color: color,
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
               ),
             ),
-            const SizedBox(width: 8),
-            // 数量徽章
-            Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 8,
-                vertical: 3,
-              ),
+          ),
+          const Spacer(),
+          // 装饰线
+          Expanded(
+            flex: 2,
+            child: Container(
+              height: 1,
+              margin: const EdgeInsets.only(left: 12),
               decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Text(
-                '${widget.group.gifts.length}',
-                style: TextStyle(
-                  color: color,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
+                gradient: LinearGradient(
+                  colors: [
+                    color.withValues(alpha: 0.3),
+                    color.withValues(alpha: 0),
+                  ],
                 ),
               ),
             ),
-            const Spacer(),
-            // 装饰线
-            Expanded(
-              flex: 2,
-              child: Container(
-                height: 1,
-                margin: const EdgeInsets.only(left: 12),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      color.withValues(alpha: 0.3),
-                      color.withValues(alpha: 0),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

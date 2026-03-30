@@ -11,6 +11,8 @@ import '../widgets/pin_code_dialog.dart';
 /// 说明：这里刻意放在 utils（UI 可引用）而不是 services，避免服务层依赖 UI 组件。
 extension SecurityServiceUnlockUi on SecurityService {
   Future<bool> ensureUnlocked(BuildContext context) async {
+    final navigator = Navigator.of(context);
+
     await init();
 
     final mode = await getSecurityMode();
@@ -24,7 +26,7 @@ extension SecurityServiceUnlockUi on SecurityService {
 
     // 有锁模式：已经解锁则直接放行，否则弹出 PIN 验证。
     if (isUnlocked.value) return true;
-    return await PinCodeDialog.show(context);
+    return PinCodeDialog.show(navigator.context);
   }
 }
 

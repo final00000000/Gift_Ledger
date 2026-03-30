@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "channel": "stable",
+      "platform": "android",
+      "version": "1.3.0",
+      "buildNumber": 1300,
+      "packageType": "apk",
+      "downloadUrl": "https://example.com/releases/gift_ledger-stable-android-v1.3.0-build1300-arm64-v8a.apk",
+      "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "notes": "稳定版 Android 更新",
+      "variants": {
+        "armeabi-v7a": {
+          "downloadUrl": "https://example.com/releases/gift_ledger-stable-android-v1.3.0-build1300-armeabi-v7a.apk",
+          "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "packageType": "apk"
+        },
+        "arm64-v8a": {
+          "downloadUrl": "https://example.com/releases/gift_ledger-stable-android-v1.3.0-build1300-arm64-v8a.apk",
+          "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "packageType": "apk"
+        }
+      }
+    },
+    {
+      "channel": "stable",
+      "platform": "windows",
+      "version": "1.3.0",
+      "buildNumber": 1300,
+      "packageType": "exe",
+      "downloadUrl": "https://example.com/releases/gift_ledger-1.3.0-windows.exe",
+      "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "notes": "稳定版 Windows 安装包"
+    },
+    {
+      "channel": "beta",
+      "platform": "windows",
+      "version": "1.3.1-beta.2",
+      "buildNumber": 1312,
+      "packageType": "exe",
+      "downloadUrl": "https://example.com/releases/gift_ledger-1.3.1-beta.2-windows.exe",
+      "sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "notes": "Beta 通道抢先体验新功能"
+    }
+  ]
+}

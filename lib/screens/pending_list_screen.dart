@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/gestures.dart';
-import 'package:flutter_slidable/flutter_slidable.dart';
-import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 import '../models/gift.dart';
 import '../models/guest.dart';
 import '../services/storage_service.dart';
+import '../services/pending_list_computation_service.dart';
 import '../services/reminder_service.dart';
 import '../services/template_service.dart';
 import '../theme/app_theme.dart';
@@ -14,32 +12,92 @@ import '../widgets/custom_toast.dart';
 import '../services/export_service.dart';
 import '../services/security_service.dart';
 import '../utils/security_unlock.dart';
-import '../widgets/privacy_aware_text.dart';
+import '../widgets/records/pending_gift_card.dart';
+import '../widgets/slidable/unified_slidable_pane.dart';
 import 'add_record_screen.dart';
 
+abstract class PendingListStorage {
+  void addListener(VoidCallback listener);
+  void removeListener(VoidCallback listener);
+  Future<List<Gift>> getUnreturnedGifts();
+  Future<List<Gift>> getPendingReceipts();
+  Future<List<Guest>> getAllGuests();
+  Future<int> updateReturnStatus(
+    int giftId, {
+    required bool isReturned,
+    int? relatedRecordId,
+  });
+  Future<int> incrementRemindedCount(int giftId);
+}
+
+class _PendingListStorageAdapter implements PendingListStorage {
+  _PendingListStorageAdapter(this._storageService);
+
+  final StorageService _storageService;
+
+  @override
+  void addListener(VoidCallback listener) => _storageService.addListener(listener);
+
+  @override
+  Future<List<Guest>> getAllGuests() => _storageService.getAllGuests();
+
+  @override
+  Future<int> incrementRemindedCount(int giftId) =>
+      _storageService.incrementRemindedCount(giftId);
+
+  @override
+  Future<List<Gift>> getPendingReceipts() => _storageService.getPendingReceipts();
+
+  @override
+  Future<List<Gift>> getUnreturnedGifts() => _storageService.getUnreturnedGifts();
+
+  @override
+  void removeListener(VoidCallback listener) =>
+      _storageService.removeListener(listener);
+
+  @override
+  Future<int> updateReturnStatus(
+    int giftId, {
+    required bool isReturned,
+    int? relatedRecordId,
+  }) {
+    return _storageService.updateReturnStatus(
+      giftId,
+      isReturned: isReturned,
+      relatedRecordId: relatedRecordId,
+    );
+  }
+}
+
 class PendingListScreen extends StatefulWidget {
-  const PendingListScreen({super.key});
+  final PendingListStorage? storageService;
+
+  const PendingListScreen({super.key, this.storageService});
 
   @override
   State<PendingListScreen> createState() => _PendingListScreenState();
 }
 
-class _PendingListScreenState extends State<PendingListScreen> with SingleTickerProviderStateMixin {
+class _PendingListScreenState extends State<PendingListScreen>
+    with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  final _storageService = StorageService();
+  late final PendingListStorage _storageService;
+  final PendingListComputationService _pendingListComputationService =
+      const PendingListComputationService();
   final _reminderService = ReminderService();
   final _templateService = TemplateService();
   final _exportService = ExportService();
   final _securityService = SecurityService();
 
   /// 验证安全锁，返回是否通过验证（统一入口）
-  Future<bool> _verifySecurityLock() => _securityService.ensureUnlocked(context);
+  Future<bool> _verifySecurityLock() =>
+      _securityService.ensureUnlocked(context);
 
   List<Gift> _unreturnedGifts = [];
   List<Gift> _pendingReceipts = [];
   Map<int, Guest> _guestMap = {};
   bool _isLoading = true;
-  
+
   // 排序选项
   String _sortBy = 'days'; // days, amount, relationship
   bool _sortAscending = false; // false=降序（天数多/金额大优先）
@@ -47,6 +105,8 @@ class _PendingListScreenState extends State<PendingListScreen> with SingleTicker
   @override
   void initState() {
     super.initState();
+    _storageService = widget.storageService ??
+        _PendingListStorageAdapter(StorageService());
     _tabController = TabController(length: 2, vsync: this);
     // 监听 StorageService 变化，自动刷新数据
     _storageService.addListener(_onDataChanged);
@@ -70,20 +130,33 @@ class _PendingListScreenState extends State<PendingListScreen> with SingleTicker
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
 
-    // 并行加载所有数据，减少等待时间
-    final results = await Future.wait([
-      _storageService.getUnreturnedGifts(),
-      _storageService.getPendingReceipts(),
-      _storageService.getAllGuests(),
+    final unreturnedFuture = _storageService.getUnreturnedGifts();
+    final pendingFuture = _storageService.getPendingReceipts();
+    final guestsFuture = _storageService.getAllGuests();
+    final results = await Future.wait<Object?>([
+      unreturnedFuture,
+      pendingFuture,
+      guestsFuture,
     ]);
 
+    if (!mounted) {
+      return;
+    }
+
+    final snapshot = _pendingListComputationService.buildSnapshot(
+      unreturnedGifts: results[0] as List<Gift>,
+      pendingReceipts: results[1] as List<Gift>,
+      guests: results[2] as List<Guest>,
+      sortBy: _sortBy,
+      sortAscending: _sortAscending,
+    );
+
     setState(() {
-      _unreturnedGifts = results[0] as List<Gift>;
-      _pendingReceipts = results[1] as List<Gift>;
-      _guestMap = {for (var g in (results[2] as List<Guest>)) g.id!: g};
+      _guestMap = snapshot.guestMap;
+      _unreturnedGifts = snapshot.unreturnedGifts;
+      _pendingReceipts = snapshot.pendingReceipts;
       _isLoading = false;
     });
-    _sortLists();
   }
 
   Color _getStatusColor(DateTime date) {
@@ -94,34 +167,20 @@ class _PendingListScreenState extends State<PendingListScreen> with SingleTicker
   }
 
   void _sortLists() {
+    final snapshot = _pendingListComputationService.buildSnapshot(
+      unreturnedGifts: _unreturnedGifts,
+      pendingReceipts: _pendingReceipts,
+      guests: _guestMap.values.toList(growable: false),
+      sortBy: _sortBy,
+      sortAscending: _sortAscending,
+    );
     setState(() {
-      _unreturnedGifts = _sortGiftList(_unreturnedGifts);
-      _pendingReceipts = _sortGiftList(_pendingReceipts);
+      _unreturnedGifts = snapshot.unreturnedGifts;
+      _pendingReceipts = snapshot.pendingReceipts;
     });
   }
 
-  List<Gift> _sortGiftList(List<Gift> gifts) {
-    final sorted = List<Gift>.from(gifts);
-    sorted.sort((a, b) {
-      int result;
-      switch (_sortBy) {
-        case 'amount':
-          result = a.amount.compareTo(b.amount);
-          break;
-        case 'relationship':
-          final guestA = _guestMap[a.guestId];
-          final guestB = _guestMap[b.guestId];
-          result = (guestA?.relationship ?? '').compareTo(guestB?.relationship ?? '');
-          break;
-        case 'days':
-        default:
-          result = a.date.compareTo(b.date);
-          break;
-      }
-      return _sortAscending ? result : -result;
-    });
-    return sorted;
-  }
+
 
   void _showSortMenu() {
     showModalBottomSheet(
@@ -145,14 +204,17 @@ class _PendingListScreenState extends State<PendingListScreen> with SingleTicker
               ),
             ),
             const SizedBox(height: 16),
-            const Text('排序方式', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+            const Text('排序方式',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
             const SizedBox(height: 16),
             _buildSortOption('days', '按天数', Icons.schedule),
             _buildSortOption('amount', '按金额', Icons.attach_money),
             _buildSortOption('relationship', '按关系', Icons.people_outline),
             const Divider(),
             ListTile(
-              leading: Icon(_sortAscending ? Icons.arrow_upward : Icons.arrow_downward, color: AppTheme.primaryColor),
+              leading: Icon(
+                  _sortAscending ? Icons.arrow_upward : Icons.arrow_downward,
+                  color: AppTheme.primaryColor),
               title: Text(_sortAscending ? '升序（小→大）' : '降序（大→小）'),
               onTap: () {
                 Navigator.pop(context);
@@ -170,12 +232,16 @@ class _PendingListScreenState extends State<PendingListScreen> with SingleTicker
   Widget _buildSortOption(String value, String label, IconData icon) {
     final isSelected = _sortBy == value;
     return ListTile(
-      leading: Icon(icon, color: isSelected ? AppTheme.primaryColor : AppTheme.textSecondary),
-      title: Text(label, style: TextStyle(
-        fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-        color: isSelected ? AppTheme.primaryColor : AppTheme.textPrimary,
-      )),
-      trailing: isSelected ? const Icon(Icons.check, color: AppTheme.primaryColor) : null,
+      leading: Icon(icon,
+          color: isSelected ? AppTheme.primaryColor : AppTheme.textSecondary),
+      title: Text(label,
+          style: TextStyle(
+            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+            color: isSelected ? AppTheme.primaryColor : AppTheme.textPrimary,
+          )),
+      trailing: isSelected
+          ? const Icon(Icons.check, color: AppTheme.primaryColor)
+          : null,
       onTap: () {
         Navigator.pop(context);
         setState(() => _sortBy = value);
@@ -188,12 +254,12 @@ class _PendingListScreenState extends State<PendingListScreen> with SingleTicker
     final isUnreturned = _tabController.index == 0;
     final gifts = isUnreturned ? _unreturnedGifts : _pendingReceipts;
     final listType = isUnreturned ? '未还' : '待收';
-    
+
     if (gifts.isEmpty) {
       CustomToast.show(context, '当前清单为空，无需导出');
       return;
     }
-    
+
     try {
       CustomToast.show(context, '正在导出...');
       final path = await _exportService.exportPendingListToExcel(
@@ -201,7 +267,7 @@ class _PendingListScreenState extends State<PendingListScreen> with SingleTicker
         guestMap: _guestMap,
         listType: listType,
       );
-      
+
       if (path != null && mounted) {
         // 尝试分享文件
         await _exportService.shareFile(path);
@@ -218,13 +284,12 @@ class _PendingListScreenState extends State<PendingListScreen> with SingleTicker
 
   String _getDaysText(DateTime date) {
     final days = _reminderService.getDaysPassed(date);
-    return '已过${days}天';
+    return '已过$days天';
   }
 
   Future<void> _markAsReturned(Gift gift) async {
     final guest = _guestMap[gift.guestId];
-    
-    // 跳转到新增记录页，预填数据
+
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
@@ -233,14 +298,14 @@ class _PendingListScreenState extends State<PendingListScreen> with SingleTicker
           prefillGuestName: guest?.name,
           prefillEventType: gift.eventType,
           prefillAmount: gift.amount,
-          prefillIsReceived: !gift.isReceived, // 反向：收礼→送礼，送礼→收礼
+          prefillIsReceived: !gift.isReceived,
           relatedGiftId: gift.id,
         ),
       ),
     );
-    
+
     if (result == true) {
-      _loadData();
+      await _loadData();
     }
   }
 
@@ -284,18 +349,19 @@ class _PendingListScreenState extends State<PendingListScreen> with SingleTicker
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) {
-          String amount = fuzzyAmount 
-            ? _reminderService.fuzzyAmount(gift.amount)
-            : '${gift.amount.toStringAsFixed(0)}元';
-          
+          String amount = fuzzyAmount
+              ? _reminderService.fuzzyAmount(gift.amount)
+              : '${gift.amount.toStringAsFixed(0)}元';
+
           String previewText = templates[selectedIndex]
-            .replaceAll('{对方}', guest.name)
-            .replaceAll('{事件}', gift.eventType)
-            .replaceAll('{金额}', amount)
-            .replaceAll('{我的事件}', '活动');
+              .replaceAll('{对方}', guest.name)
+              .replaceAll('{事件}', gift.eventType)
+              .replaceAll('{金额}', amount)
+              .replaceAll('{我的事件}', '活动');
 
           return AlertDialog(
-            title: const Text('生成提醒话术', style: TextStyle(fontWeight: FontWeight.w800)),
+            title: const Text('生成提醒话术',
+                style: TextStyle(fontWeight: FontWeight.w800)),
             content: SizedBox(
               width: 320,
               child: Column(
@@ -303,10 +369,11 @@ class _PendingListScreenState extends State<PendingListScreen> with SingleTicker
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // 模板选择
-                  Text('选择模板：', style: TextStyle(
-                    fontSize: 12,
-                    color: AppTheme.textSecondary,
-                  )),
+                  const Text('选择模板：',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppTheme.textSecondary,
+                      )),
                   const SizedBox(height: 8),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -335,19 +402,21 @@ class _PendingListScreenState extends State<PendingListScreen> with SingleTicker
                     ),
                   ),
                   const SizedBox(height: 16),
-                  
+
                   // 话术预览
-                  Text('预览：', style: TextStyle(
-                    fontSize: 12,
-                    color: AppTheme.textSecondary,
-                  )),
+                  const Text('预览：',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppTheme.textSecondary,
+                      )),
                   const SizedBox(height: 8),
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
                       color: AppTheme.backgroundColor,
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: AppTheme.primaryColor.withValues(alpha: 0.2)),
+                      border: Border.all(
+                          color: AppTheme.primaryColor.withValues(alpha: 0.2)),
                     ),
                     child: Text(
                       previewText,
@@ -355,7 +424,7 @@ class _PendingListScreenState extends State<PendingListScreen> with SingleTicker
                     ),
                   ),
                   const SizedBox(height: 16),
-                  
+
                   // 模糊金额开关
                   Row(
                     children: [
@@ -414,16 +483,18 @@ class _PendingListScreenState extends State<PendingListScreen> with SingleTicker
 
   void _showContextMenu(Gift gift, Offset position) {
     final isReceived = gift.isReceived;
-    
+
     showMenu(
       context: context,
-      position: RelativeRect.fromLTRB(position.dx, position.dy, position.dx, position.dy),
+      position: RelativeRect.fromLTRB(
+          position.dx, position.dy, position.dx, position.dy),
       items: [
         PopupMenuItem(
           onTap: () => Future.microtask(() => _markAsReturned(gift)),
           child: Row(
             children: [
-              Icon(Icons.check_circle_outline, color: Colors.green, size: 20),
+              const Icon(Icons.check_circle_outline,
+                  color: Colors.green, size: 20),
               const SizedBox(width: 8),
               Text(isReceived ? '还账' : '收账'),
             ],
@@ -432,11 +503,11 @@ class _PendingListScreenState extends State<PendingListScreen> with SingleTicker
         if (!isReceived)
           PopupMenuItem(
             onTap: () => Future.microtask(() => _showReminderDialog(gift)),
-            child: Row(
+            child: const Row(
               children: [
                 Icon(Icons.message_outlined, color: Colors.blue, size: 20),
-                const SizedBox(width: 8),
-                const Text('提醒一下'),
+                SizedBox(width: 8),
+                Text('提醒一下'),
               ],
             ),
           ),
@@ -458,103 +529,14 @@ class _PendingListScreenState extends State<PendingListScreen> with SingleTicker
     final guest = _guestMap[gift.guestId];
     final statusColor = _getStatusColor(gift.date);
     final isReceived = gift.isReceived;
-    final dateFormat = DateFormat('MM月dd日');
     final lunarDate = LunarUtils.getLunarDateString(gift.date);
 
-    final content = Container(
-      // margin moved to wrapper Padding to fix Slidable action height
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.black.withValues(alpha: 0.04)),
-        boxShadow: [
-          BoxShadow(
-            color: Theme.of(context).shadowColor.withValues(alpha: 0.04),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          // 状态指示器
-          Container(
-            width: 4,
-            height: 40,
-            decoration: BoxDecoration(
-              color: statusColor,
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-          const SizedBox(width: 12),
-          // 信息区域
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Text(
-                      guest?.name ?? '未知',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: AppTheme.backgroundColor,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        gift.eventType,
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: AppTheme.textSecondary,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  '${dateFormat.format(gift.date)} ($lunarDate)',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: AppTheme.textSecondary,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          // 金额和天数
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              PrivacyAwareText(
-                '¥${gift.amount.toStringAsFixed(0)}',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w800,
-                  color: isReceived ? AppTheme.primaryColor : AppTheme.accentColor,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                _getDaysText(gift.date),
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: statusColor,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
+    final content = PendingGiftCard(
+      gift: gift,
+      guest: guest,
+      lunarDate: lunarDate,
+      daysText: _getDaysText(gift.date),
+      statusColor: statusColor,
     );
 
     // 桌面端使用右键菜单和长按菜单
@@ -572,42 +554,47 @@ class _PendingListScreenState extends State<PendingListScreen> with SingleTicker
         // 如果需要点击查看详情，可以在这里添加逻辑
         // 目前暂时只做点击拦截
       },
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-              child: Slidable(
-                key: ValueKey(gift.id),
-                enabled: _securityService.isUnlocked.value, // 未解锁时禁止滑动
-                endActionPane: ActionPane(
-                  motion: const ScrollMotion(),
-                  extentRatio: 0.5, // 适当缩小操作区宽度
-                  children: [
-                    SlidableAction(
-                      onPressed: (_) => _markAsReturned(gift),
-                      backgroundColor: Colors.green,
-                      foregroundColor: Colors.white,
-                      icon: Icons.check_circle_outline,
-                      label: isReceived ? '还账' : '收账',
-                      borderRadius: BorderRadius.circular(12), // 全圆角
-                    ),
-                    const SizedBox(width: 8), // 按钮之间的间距
-                    SlidableAction(
-                      onPressed: (_) => isReceived ? _openEditRecord(gift) : _showReminderDialog(gift),
-                      backgroundColor: isReceived ? Colors.grey : (gift.remindedCount > 2 ? Colors.grey : Colors.blue),
-                      foregroundColor: Colors.white,
-                      icon: isReceived
-                          ? Icons.edit_outlined
-                          : (gift.remindedCount > 2 ? Icons.warning_amber_outlined : Icons.message_outlined),
-                      label: isReceived ? '编辑' : (gift.remindedCount > 2 ? '已提醒' : '提醒'),
-                      borderRadius: BorderRadius.circular(12), // 全圆角
-                    ),
-                  ],
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        child: ValueListenableBuilder<bool>(
+          valueListenable: _securityService.isUnlocked,
+          builder: (context, isUnlocked, _) {
+            return UnifiedSlidablePane(
+              enabled: isUnlocked,
+              childEndPadding: 8,
+              extentRatio: 0.52,
+              actions: [
+                UnifiedSlidableAction(
+                  label: isReceived ? '还账' : '收账',
+                  color: Colors.green,
+                  onTap: () => _markAsReturned(gift),
+                  icon: Icons.check_circle_outline,
+                  showIcon: false,
+                  borderRadius: const BorderRadius.all(Radius.circular(16)),
                 ),
-                child: Padding(
-                  padding: const EdgeInsets.only(right: 8.0), // 关键：卡片与侧滑按钮之间的间距
-                  child: content,
+                UnifiedSlidableAction(
+                  label: isReceived ? '编辑' : (gift.remindedCount > 2 ? '已提醒' : '提醒'),
+                  color: isReceived
+                      ? const Color(0xFF2C2C2E)
+                      : (gift.remindedCount > 2 ? Colors.grey : Colors.blue),
+                  onTap: () => isReceived
+                      ? _openEditRecord(gift)
+                      : _showReminderDialog(gift),
+                  icon: isReceived
+                      ? Icons.edit_outlined
+                      : (gift.remindedCount > 2
+                          ? Icons.warning_amber_outlined
+                          : Icons.message_outlined),
+                  showIcon: false,
+                  borderRadius: const BorderRadius.all(Radius.circular(16)),
                 ),
-              ),
-            ),    );
+              ],
+              child: content,
+            );
+          },
+        ),
+      ),
+    );
   }
 
   Widget _buildEmptyState(bool isUnreturned) {
@@ -623,7 +610,7 @@ class _PendingListScreenState extends State<PendingListScreen> with SingleTicker
           const SizedBox(height: 16),
           Text(
             isUnreturned ? '暂无待还人情' : '暂无待收人情',
-            style: TextStyle(
+            style: const TextStyle(
               fontSize: 16,
               color: AppTheme.textSecondary,
             ),
@@ -637,7 +624,8 @@ class _PendingListScreenState extends State<PendingListScreen> with SingleTicker
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('待处理人情', style: TextStyle(fontWeight: FontWeight.w800)),
+        title:
+            const Text('待处理人情', style: TextStyle(fontWeight: FontWeight.w800)),
         actions: [
           IconButton(
             icon: const Icon(Icons.sort),
@@ -674,10 +662,11 @@ class _PendingListScreenState extends State<PendingListScreen> with SingleTicker
                         child: ValueListenableBuilder<bool>(
                           valueListenable: _securityService.isUnlocked,
                           builder: (context, isUnlocked, child) {
-                             return ListView.builder(
+                            return ListView.builder(
                               padding: const EdgeInsets.symmetric(vertical: 8),
                               itemCount: _unreturnedGifts.length,
-                              itemBuilder: (context, index) => _buildListItem(_unreturnedGifts[index]),
+                              itemBuilder: (context, index) =>
+                                  _buildListItem(_unreturnedGifts[index]),
                             );
                           },
                         ),
@@ -690,10 +679,11 @@ class _PendingListScreenState extends State<PendingListScreen> with SingleTicker
                         child: ValueListenableBuilder<bool>(
                           valueListenable: _securityService.isUnlocked,
                           builder: (context, isUnlocked, child) {
-                             return ListView.builder(
+                            return ListView.builder(
                               padding: const EdgeInsets.symmetric(vertical: 8),
                               itemCount: _pendingReceipts.length,
-                              itemBuilder: (context, index) => _buildListItem(_pendingReceipts[index]),
+                              itemBuilder: (context, index) =>
+                                  _buildListItem(_pendingReceipts[index]),
                             );
                           },
                         ),

@@ -1,84 +1,71 @@
 # 🔨 构建指南
 
-本文档说明如何为不同平台构建随礼记应用。
+本文档说明如何在本地与 GitHub Actions 中构建随礼记。
 
 ---
 
 ## 📋 前置要求
 
-- **Flutter SDK**: 3.2.0 或更高版本
-- **Dart SDK**: 随 Flutter 一起安装
-- **Git**: 用于克隆仓库
-
-### 平台特定要求
-
-| 平台 | 额外要求 |
-|------|----------|
-| **Android** | Android Studio / Android SDK (API 21+) |
-| **Windows** | Visual Studio 2022 (含 C++ 桌面开发工具) |
-| **Web** | Chrome 浏览器（用于调试） |
-| **iOS** | macOS + Xcode 14+ + CocoaPods |
+- **Flutter SDK**：3.2.0 或更高版本
+- **Git**：用于克隆仓库
+- **Android**：Android Studio / Android SDK（API 21+）
+- **Windows**：Visual Studio 2022（含 C++ 桌面开发工具）
+- **iOS**：macOS + Xcode 14+ + CocoaPods
 
 ---
 
 ## 🚀 快速开始
 
-### 1. 克隆仓库
-
 ```bash
 git clone https://github.com/final00000000/Gift_Ledger.git
 cd Gift_Ledger
-```
-
-### 2. 安装依赖
-
-```bash
 flutter pub get
-```
-
-### 3. 检查环境
-
-```bash
 flutter doctor
 ```
-
-确保所有必需的工具都已正确安装。
 
 ---
 
 ## 📦 Android 构建
 
-### 调试版本
+### 关键规则
+
+- **正式发布只产出两个 split APK**
+- **仅保留 `armeabi-v7a` / `arm64-v8a`**
+- **不再发布 `x86 / x86_64 / universal.apk`**
+- 本地与 CI 都遵循同一 ABI 约束
+- 正式发布的 ABI 约束统一由构建命令与 GitHub Actions 参数控制：
+  - `--split-per-abi`
+  - `--target-platform android-arm,android-arm64`
+
+### 本地构建：按 ABI 拆分 APK
 
 ```bash
-flutter build apk --debug
+flutter build apk --release --split-per-abi --target-platform android-arm,android-arm64
 ```
 
-输出位置：`build/app/outputs/flutter-apk/app-debug.apk`
+输出：
 
-### 发布版本（最小化 APK）
+- `build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk`
+- `build/app/outputs/flutter-apk/app-arm64-v8a-release.apk`
+
+### 本地构建：AAB
 
 ```bash
-# 构建优化的 APK（启用代码压缩和混淆）
-flutter build apk --release --shrink
-
-# 或构建 App Bundle（推荐用于 Google Play）
 flutter build appbundle --release
 ```
 
-输出位置：
-- APK: `build/app/outputs/flutter-apk/app-release.apk`
-- AAB: `build/app/outputs/bundle/release/app-release.aab`
+### 发布产物命名约定
 
-### APK 大小优化说明
+GitHub Actions `publish-updates.yml` 会产出：
 
-项目已配置以下优化：
-- ✅ **代码压缩**：移除未使用的代码
-- ✅ **资源压缩**：移除未使用的资源
-- ✅ **代码混淆**：使用 ProGuard/R8 混淆代码
-- ✅ **拆分 ABI**：为不同 CPU 架构生成单独的 APK
+- `gift_ledger-<channel>-android-v<version>-build<build>-armeabi-v7a.apk`
+- `gift_ledger-<channel>-android-v<version>-build<build>-arm64-v8a.apk`
 
-预期 APK 大小：**15-20 MB**（单架构）
+说明：
+
+- update manifest 顶层 `downloadUrl` 固定指向 `arm64-v8a.apk`
+- 新版客户端优先读取 manifest 中的 `variants`，按设备 ABI 下载对应 split APK
+- 旧版客户端若只认识顶层 `downloadUrl`，会默认拿到 arm64 包，因此**不再承诺兼容旧的 universal 更新链路**
 
 ---
 
@@ -90,164 +77,121 @@ flutter build appbundle --release
 flutter build windows --release
 ```
 
-输出位置：`build/windows/x64/runner/Release/`
+输出：`build/windows/x64/runner/Release/`
 
-### 打包为 ZIP
+### 打包为安装器
 
 ```bash
-# Windows (PowerShell)
-Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath gift_ledger_windows.zip
+flutter build windows --release
+iscc ^
+  /DAppVersion=1.3.2 ^
+  /DAppBuild=1030299 ^
+  /DAppChannel=stable ^
+  /DOutputBaseName=gift_ledger-stable-windows-v1.3.2-build1030299-setup ^
+  windows/installer/GiftLedger.iss
+```
 
-# Linux/macOS
-cd build/windows/x64/runner/Release
-zip -r ../../../../../gift_ledger_windows.zip *
+---
+
+## 🔄 Android / Windows 内置更新发布
+
+### manifest 地址
+
+```text
+https://raw.githubusercontent.com/final00000000/Gift_Ledger/master/releases/update-manifest.json
+```
+
+### 工作流
+
+```text
+.github/workflows/publish-updates.yml
+```
+
+职责：
+
+1. 构建 Android split APK（仅 `armeabi-v7a` / `arm64-v8a`）
+2. 构建 Windows 安装器
+3. 上传 GitHub Release 资产
+4. 生成并提交 `releases/update-manifest.json`
+5. 为 Android 写入 `variants`，让客户端按 ABI 下载对应安装包
+
+### 本地生成 manifest
+
+```bash
+python tool/generate_update_manifest.py   --input tool/release/update_release_matrix.sample.json   --output releases/update-manifest.json
 ```
 
 ---
 
 ## 🌐 Web 构建
 
-### 发布版本
-
 ```bash
 flutter build web --release
 ```
 
-输出位置：`build/web/`
-
-### 本地测试
-
-```bash
-# 使用 Python 启动本地服务器
-cd build/web
-python -m http.server 8000
-
-# 或使用 Node.js
-npx serve
-```
-
-访问：`http://localhost:8000`
-
-### 部署到静态托管
-
-构建产物（`build/web/` 目录）可直接部署到：
-- GitHub Pages
-- Vercel
-- Netlify
-- Cloudflare Pages
-- 任何静态文件托管服务
+输出：`build/web/`
 
 ---
 
 ## 🍎 iOS 构建
 
-> **注意**：iOS 构建需要 macOS 系统和 Apple 开发者账号（用于真机安装）。
+> **注意**：iOS 提供的是**未签名 IPA**，仅适用于开发者自行签名、重打包或验证；不支持 App 内更新。
 
-### 1. 安装 CocoaPods 依赖
-
-```bash
-cd ios
-pod install
-cd ..
-```
-
-### 2. 使用 Xcode 构建
+### 本地无签名校验构建
 
 ```bash
-# 打开 Xcode 项目
-open ios/Runner.xcworkspace
+flutter pub get
+flutter build ios --release --no-codesign
 ```
 
-在 Xcode 中：
-1. 选择你的开发团队（Signing & Capabilities）
-2. 连接 iOS 设备
-3. 选择目标设备
-4. 点击 Run 或 Archive
+### GitHub Actions 构建未签名 IPA
 
-### 3. 命令行构建（需要配置签名）
+工作流：
 
-```bash
-flutter build ios --release
+```text
+.github/workflows/ios_build.yml
 ```
 
-输出位置：`build/ios/iphoneos/Runner.app`
+说明：
 
-### 生成 IPA（需要开发者账号）
+- 在 `macos-latest` 上执行 `flutter build ios --release --no-codesign`
+- 自动导出未签名 IPA
+- 可选择上传为 GitHub Actions Artifact
+- 如填写 `release_tag`，会额外上传到对应 GitHub Release
 
-在 Xcode 中：
-1. Product → Archive
-2. 等待归档完成
-3. Distribute App → Ad Hoc / App Store
-4. 导出 IPA 文件
+---
+
+## 📝 版本号规则
+
+版本与 build number 的填写规则见：
+
+```text
+docs/RELEASE_VERSION_RULES.md
+```
+
+重点：
+
+- `pubspec.yaml` 始终保存当前 stable 版本
+- Android `versionCode` 不跟 GitHub Actions run number 绑定
+- beta 发布必须填写完整 `release_tag`
 
 ---
 
 ## 🔧 常见问题
 
-### Android 构建失败
+### Android 构建后为什么只有两个 APK？
 
-**问题**：`Execution failed for task ':app:lintVitalRelease'`
+因为当前正式发布只保留：
 
-**解决**：在 `android/app/build.gradle` 中添加：
-```gradle
-android {
-    lintOptions {
-        checkReleaseBuilds false
-    }
-}
-```
+- `armeabi-v7a`
+- `arm64-v8a`
 
-### Windows 构建失败
-
-**问题**：缺少 Visual Studio 工具
-
-**解决**：
-1. 安装 Visual Studio 2022
-2. 勾选"使用 C++ 的桌面开发"工作负载
-3. 重新运行 `flutter doctor`
-
-### iOS 构建失败
-
-**问题**：`CocoaPods not installed`
-
-**解决**：
-```bash
-sudo gem install cocoapods
-```
-
-### Web 构建后无法加载
-
-**问题**：CORS 错误或资源加载失败
-
-**解决**：
-- 确保使用 HTTP 服务器（不要直接打开 index.html）
-- 检查 `web/index.html` 中的 base href 配置
+`x86 / x86_64 / universal.apk` 已从正式发布链路中移除，ABI 由发布命令显式约束。
 
 ---
 
-## 📝 版本号管理
+## 📄 相关文档
 
-版本号在 `pubspec.yaml` 中定义：
-
-```yaml
-version: 1.2.5+5
-```
-
-格式：`主版本.次版本.修订号+构建号`
-
-修改版本号后，重新构建即可应用新版本。
-
----
-
-## 🤝 贡献
-
-如果你在构建过程中遇到问题或有改进建议，欢迎：
-- 提交 Issue
-- 发起 Pull Request
-- 更新本文档
-
----
-
-## 📄 许可证
-
-本项目采用 MIT 许可证。详见 [LICENSE](LICENSE) 文件。
+- 中文构建说明：`BUILD.md`
+- 英文构建说明：`docs/BUILD_EN.md`
+- 版本规则：`docs/RELEASE_VERSION_RULES.md`

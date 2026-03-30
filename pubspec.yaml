@@ -1,7 +1,8 @@
 name: gift_ledger
 description: "份子钱记账 - 礼金收支追踪与管理"
 publish_to: 'none'
-version: 1.2.7+7
+# build number 规则：稳定版 1.3.3 -> 1030399；预发布版 1.3.3-beta.2 -> 1030302。
+version: 1.3.3+1030399
 
 environment:
   sdk: ^3.2.0
@@ -32,13 +33,18 @@ dependencies:
   flutter_secure_storage: ^10.0.0
   crypto: ^3.0.7
   web: ^0.5.1  # Web API 支持（IndexedDB）
+  url_launcher: ^6.2.5
+  font_awesome_flutter: ^10.7.0
+  flutter_native_splash: ^2.4.4  # 启动页优化（降级以兼容 excel)
+  dio: ^5.9.0
+  package_info_plus: ^8.3.1
+  open_filex: ^4.7.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^4.0.0
   flutter_launcher_icons: ^0.13.1
-  flutter_native_splash: ^2.4.4  # 启动页优化（降级以兼容 excel）
 
 flutter_launcher_icons:
   android: "launcher_icon"
@@ -88,3 +94,7 @@ flutter_native_splash:
   # 图标居中
   android_gravity: center
   ios_content_mode: center
+
+
+
+

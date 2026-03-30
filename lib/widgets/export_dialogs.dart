@@ -160,46 +160,48 @@ class ExportDialogs {
 
   static Future<void> _performExport(
       BuildContext context, String type, Future<String?> Function() exportFunc) async {
-    
-    // 显示加载动画
-    _showLoading(context, '正在导出 $type...');
-    
-    bool loadingDismissed = false;
-    void dismissLoading() {
-      if (!loadingDismissed && context.mounted) {
-        loadingDismissed = true;
-        Navigator.of(context, rootNavigator: true).pop();
-      }
-    }
-    
-    try {
-      final path = await exportFunc();
-      dismissLoading();
+    String? path;
+    Object? exportError;
 
-      if (path != null && context.mounted) {
-        // 如果返回值是提示信息（非路径），直接显示
-        final message = path.startsWith('/') || path.startsWith('\\') || path.contains(':') 
-            ? '文件已保存: $path' 
-            : path;
-            
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(message)),
-        );
-      }
+    _showLoading(context, '正在导出 $type...');
+
+    try {
+      path = await exportFunc();
     } catch (e) {
-      dismissLoading();
-      if (context.mounted) {
-        _showError(context, '导出失败: $e');
-      }
+      exportError = e;
     }
+
+    if (context.mounted) {
+      Navigator.of(context, rootNavigator: true).pop();
+    }
+
+    if (!context.mounted) return;
+
+    if (exportError != null) {
+      _showError(context, '导出失败: $exportError');
+      return;
+    }
+
+    if (path != null) {
+      final message = path.startsWith('/') || path.startsWith('\\') || path.contains(':')
+          ? '文件已保存: $path'
+          : path;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+    }
+    // path == null 表示用户取消，不做任何提示
   }
 
   static Future<void> _pickAndImport(
-    BuildContext context, 
-    List<String> extensions, 
+    BuildContext context,
+    List<String> extensions,
     VoidCallback? onSuccess,
     {required bool isJson}
   ) async {
+    final dialogContext = context;
+    final navigator = Navigator.of(context, rootNavigator: true);
+    final messenger = ScaffoldMessenger.of(context);
     FilePickerResult? result;
     try {
       result = await FilePicker.platform.pickFiles(
@@ -207,8 +209,8 @@ class ExportDialogs {
         allowedExtensions: extensions,
       );
     } catch (e) {
-      if (context.mounted) {
-        _showError(context, '选择文件失败: $e');
+      if (dialogContext.mounted) {
+        _showError(dialogContext, '选择文件失败: $e');
       }
       return;
     }
@@ -219,14 +221,14 @@ class ExportDialogs {
     }
 
     String path = result.files.single.path!;
-    
-    _showLoading(context, '正在导入数据...');
-    
+
+    _showLoading(dialogContext, '正在导入数据...');
+
     bool loadingDismissed = false;
     void dismissLoading() {
-      if (!loadingDismissed && context.mounted) {
+      if (!loadingDismissed && navigator.context.mounted) {
         loadingDismissed = true;
-        Navigator.of(context, rootNavigator: true).pop();
+        navigator.pop();
       }
     }
     
@@ -239,13 +241,13 @@ class ExportDialogs {
       }
 
       dismissLoading();
-      
-      if (context.mounted) {
-        _showImportResult(context, importResult, onSuccess);
+
+      if (messenger.mounted) {
+        _showImportResult(messenger.context, importResult, onSuccess);
       }
     } catch (e) {
       dismissLoading();
-      if (context.mounted) {
+      if (dialogContext.mounted) {
         // 显示详细的错误信息
         String errorMsg = e.toString();
         if (errorMsg.contains('Excel')) {
@@ -253,9 +255,9 @@ class ExportDialogs {
         } else if (errorMsg.contains('JSON') || errorMsg.contains('json')) {
           errorMsg = 'JSON文件格式错误，请确保文件是由本应用导出的备份文件';
         }
-        
+
         showDialog(
-          context: context,
+          context: navigator.context,
           builder: (context) => AlertDialog(
             title: const Text('导入失败'),
             content: Text(errorMsg),

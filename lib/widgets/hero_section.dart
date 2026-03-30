@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
-import '../services/security_service.dart';
 import 'animated_counter.dart';
 
 /// 简约风格英雄区组件
@@ -11,6 +10,7 @@ class HeroSection extends StatelessWidget {
   final double? receivedTrend;
   final double? sentTrend;
   final List<double>? recentTrend;
+  final bool isUnlocked;
   final VoidCallback? onReceivedTap;
   final VoidCallback? onSentTap;
 
@@ -18,6 +18,7 @@ class HeroSection extends StatelessWidget {
     super.key,
     required this.totalReceived,
     required this.totalSent,
+    required this.isUnlocked,
     this.receivedTrend,
     this.sentTrend,
     this.recentTrend,
@@ -187,23 +188,18 @@ class HeroSection extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 12),
-            ValueListenableBuilder<bool>(
-              valueListenable: SecurityService().isUnlocked,
-              builder: (context, isUnlocked, child) {
-                return PrivacyAwareAnimatedCounter(
-                  value: amount,
-                  isUnlocked: isUnlocked,
-                  prefix: '¥',
-                  formatter: AnimatedCounter.formatAmount,
-                  style: TextStyle(
-                    color: color,
-                    fontSize: 22,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: -0.5,
-                  ),
-                  mask: '¥****',
-                );
-              },
+            PrivacyAwareAnimatedCounter(
+              value: amount,
+              isUnlocked: isUnlocked,
+              prefix: '¥',
+              formatter: AnimatedCounter.formatAmount,
+              style: TextStyle(
+                color: color,
+                fontSize: 22,
+                fontWeight: FontWeight.w700,
+                letterSpacing: -0.5,
+              ),
+              mask: '¥****',
             ),
             if (trend != null) ...[
               const SizedBox(height: 8),
@@ -314,40 +310,35 @@ class HeroSection extends StatelessWidget {
               ),
             ],
           ),
-          ValueListenableBuilder<bool>(
-            valueListenable: SecurityService().isUnlocked,
-            builder: (context, isUnlocked, child) {
-              if (!isUnlocked) {
-                return Text(
-                  '****',
+          if (!isUnlocked)
+            Text(
+              '****',
+              style: TextStyle(
+                color: AppTheme.textPrimary,
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+              ),
+            )
+          else
+            Row(
+              children: [
+                Icon(
+                  isPositive ? Icons.add_rounded : Icons.remove_rounded,
+                  color: isPositive ? AppTheme.primaryColor : AppTheme.accentColor,
+                  size: 18,
+                ),
+                AnimatedCounter(
+                  value: balance.abs(),
+                  prefix: '¥',
+                  formatter: AnimatedCounter.formatAmount,
                   style: TextStyle(
-                    color: AppTheme.textPrimary,
+                    color: isPositive ? AppTheme.primaryColor : AppTheme.accentColor,
                     fontSize: 18,
                     fontWeight: FontWeight.w600,
                   ),
-                );
-              }
-              return Row(
-                children: [
-                  Icon(
-                    isPositive ? Icons.add_rounded : Icons.remove_rounded,
-                    color: isPositive ? AppTheme.primaryColor : AppTheme.accentColor,
-                    size: 18,
-                  ),
-                  AnimatedCounter(
-                    value: balance.abs(),
-                    prefix: '¥',
-                    formatter: AnimatedCounter.formatAmount,
-                    style: TextStyle(
-                      color: isPositive ? AppTheme.primaryColor : AppTheme.accentColor,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              );
-            },
-          ),
+                ),
+              ],
+            ),
         ],
       ),
     );

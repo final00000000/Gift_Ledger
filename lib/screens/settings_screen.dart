@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:provider/provider.dart';
 import '../theme/app_theme.dart';
 import '../widgets/custom_toast.dart';
 import '../widgets/export_dialogs.dart';
@@ -9,13 +10,30 @@ import '../services/template_service.dart';
 import '../services/notification_service.dart';
 import '../services/storage_service.dart';
 import '../services/security_service.dart';
+import '../services/update/app_build_info_service.dart';
+import '../services/update/update_controller.dart';
 import '../widgets/pin_code_dialog.dart';
+import '../widgets/update/about_app_entry_tile.dart';
 import '../providers/api_providers.dart';
-import 'template_settings_screen.dart';
+import 'about_app_screen.dart';
 import 'login_screen.dart';
+import 'template_settings_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({super.key});
+  const SettingsScreen({
+    super.key,
+    this.storageService,
+    this.templateService,
+    this.notificationService,
+    this.securityService,
+    this.initialAppVersion,
+  });
+
+  final Object? storageService;
+  final Object? templateService;
+  final Object? notificationService;
+  final Object? securityService;
+  final String? initialAppVersion;
 
   @override
   State<SettingsScreen> createState() => SettingsScreenState();
@@ -28,19 +46,28 @@ class SettingsScreenState extends State<SettingsScreen> {
   bool _statsIncludeEventBooks = true;
   bool _eventBooksEnabled = true;
   String _securityMode = SecurityService.modeNone;
-  bool _isLoading = true; // 添加加载状态
   String _appVersion = '';
-  final TemplateService _templateService = TemplateService();
-  final NotificationService _notificationService = NotificationService();
-  final StorageService _db = StorageService();
-  final SecurityService _securityService = SecurityService();
+  late final dynamic _templateService;
+  late final dynamic _notificationService;
+  late final dynamic _db;
+  late final dynamic _securityService;
+  final AppBuildInfoService _appBuildInfoService = const AppBuildInfoService();
 
   @override
   void initState() {
     super.initState();
+    _templateService = widget.templateService ?? TemplateService();
+    _notificationService = widget.notificationService ?? NotificationService();
+    _db = widget.storageService ?? StorageService();
+    _securityService = widget.securityService ?? SecurityService();
+
     // 监听 StorageService 变化，自动刷新设置
     _db.addListener(_onDataChanged);
-    _loadAppInfo();
+    if (widget.initialAppVersion != null) {
+      _appVersion = widget.initialAppVersion!;
+    } else {
+      _loadAppInfo();
+    }
     _loadSettings();
   }
 
@@ -53,13 +80,10 @@ class SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _loadAppInfo() async {
     try {
-      final text = await rootBundle.loadString('pubspec.yaml');
-      final match = RegExp(r'^version:\s*([^\s]+)', multiLine: true).firstMatch(text);
-      final raw = match?.group(1) ?? '';
-      final semver = raw.split('+').first;
+      final buildInfo = await _appBuildInfoService.getCurrentBuildInfo();
       if (!mounted) return;
       setState(() {
-        _appVersion = semver;
+        _appVersion = buildInfo.version;
       });
     } catch (_) {
       if (!mounted) return;
@@ -77,32 +101,40 @@ class SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _loadSettings() async {
     // 并行加载所有设置
-    final results = await Future.wait([
-      SharedPreferences.getInstance(),
-      _templateService.getUseFuzzyAmount(),
-      _notificationService.isEnabled(),
-      _db.getStatsIncludeEventBooks(),
-      _db.getEventBooksEnabled(),
-      _securityService.getSecurityMode(),
+    final Future<bool> defaultIsReceivedFuture = _db.getDefaultIsReceived();
+    final Future<bool> useFuzzyAmountFuture =
+        _templateService.getUseFuzzyAmount();
+    final Future<bool> notificationsEnabledFuture =
+        _notificationService.isEnabled();
+    final Future<bool> statsIncludeEventBooksFuture =
+        _db.getStatsIncludeEventBooks();
+    final Future<bool> eventBooksEnabledFuture = _db.getEventBooksEnabled();
+    final Future<String> securityModeFuture =
+        _securityService.getSecurityMode();
+
+    final results = await Future.wait<dynamic>([
+      defaultIsReceivedFuture,
+      useFuzzyAmountFuture,
+      notificationsEnabledFuture,
+      statsIncludeEventBooksFuture,
+      eventBooksEnabledFuture,
+      securityModeFuture,
     ]);
 
-    final prefs = results[0] as SharedPreferences;
     if (mounted) {
       setState(() {
-        _defaultIsReceived = prefs.getBool('default_is_received') ?? true;
+        _defaultIsReceived = results[0] as bool;
         _useFuzzyAmount = results[1] as bool;
         _notificationsEnabled = results[2] as bool;
         _statsIncludeEventBooks = results[3] as bool;
         _eventBooksEnabled = results[4] as bool;
         _securityMode = results[5] as String;
-        _isLoading = false; // 标记加载完成
       });
     }
   }
 
   Future<void> _saveSetting(bool value) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('default_is_received', value);
+    await _db.setDefaultIsReceived(value);
     setState(() {
       _defaultIsReceived = value;
     });
@@ -137,7 +169,7 @@ class SettingsScreenState extends State<SettingsScreen> {
             onPinSet: (pin) => _securityService.setPin(pin),
           ),
         );
-        
+
         if (pinSet != true) return; // 用户取消设置密码
       } else {
         // 如果已经有密码，且是从无锁切到有锁，这里不需要额外验证
@@ -147,30 +179,31 @@ class SettingsScreenState extends State<SettingsScreen> {
 
     await _securityService.setSecurityMode(mode);
     setState(() => _securityMode = mode);
-    
+
     // 隐形模式下，自动关闭"显示首页金额"
     if (mode == SecurityService.modeInvisible) {
-       // 更新数据库设置（逻辑上已经由SecurityService控制）
-       await _db.setShowHomeAmounts(false);
+      // 更新数据库设置（逻辑上已经由SecurityService控制）
+      await _db.setShowHomeAmounts(false);
     }
   }
 
   Future<void> _changePassword() async {
     // 先验证旧密码
-    final verified = await PinCodeDialog.show(context);
-    if (!verified) return;
+    final currentContext = context;
+    final verified = await PinCodeDialog.show(currentContext);
+    if (!verified || !currentContext.mounted) return;
 
-    if (!mounted) return;
     await showModalBottomSheet(
-      context: context,
+      context: currentContext,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => PinCodeDialog(
+      builder: (dialogContext) => PinCodeDialog(
         isSettingPin: true,
         title: '设置新密码',
         onPinSet: (pin) async {
-           await _securityService.setPin(pin);
-           if (mounted) CustomToast.show(context, '密码修改成功');
+          await _securityService.setPin(pin);
+          if (!dialogContext.mounted) return;
+          CustomToast.show(dialogContext, '密码修改成功');
         },
       ),
     );
@@ -179,6 +212,53 @@ class SettingsScreenState extends State<SettingsScreen> {
   /// 公开刷新方法，供控制器调用
   void refreshData() {
     _loadSettings();
+  }
+
+  ({bool showRedDot, String? chipText}) _resolveAboutUpdateEntryState(
+    UpdateState updateState,
+  ) {
+    final shouldShowUpdateState = updateState.showRedDot ||
+        updateState.target != null ||
+        updateState.status == UpdateStateStatus.downloading ||
+        updateState.status == UpdateStateStatus.installing ||
+        updateState.status == UpdateStateStatus.permissionRequired;
+
+    if (!shouldShowUpdateState) {
+      return (showRedDot: false, chipText: null);
+    }
+
+    final defaultChipText = switch (updateState.status) {
+      UpdateStateStatus.downloading => '后台下载中',
+      UpdateStateStatus.installing => '等待安装',
+      UpdateStateStatus.permissionRequired => '需开启权限',
+      UpdateStateStatus.error => '更新未完成',
+      _ => '发现新版本',
+    };
+
+    switch (updateState.status) {
+      case UpdateStateStatus.downloading:
+        final fraction = updateState.downloadProgress?.fraction;
+        if (fraction == null) {
+          return (showRedDot: true, chipText: defaultChipText);
+        }
+        final percent = (fraction * 100).clamp(0, 100).round();
+        return (showRedDot: true, chipText: '下载中 $percent%');
+      case UpdateStateStatus.installing:
+        return (showRedDot: true, chipText: defaultChipText);
+      case UpdateStateStatus.permissionRequired:
+        return (showRedDot: true, chipText: defaultChipText);
+      case UpdateStateStatus.error:
+        return (
+          showRedDot: updateState.target != null || updateState.showRedDot,
+          chipText: updateState.target == null ? null : defaultChipText,
+        );
+      case UpdateStateStatus.available:
+      case UpdateStateStatus.idle:
+      case UpdateStateStatus.checking:
+      case UpdateStateStatus.upToDate:
+      case UpdateStateStatus.unsupported:
+        return (showRedDot: true, chipText: '发现新版本');
+    }
   }
 
   @override
@@ -191,12 +271,34 @@ class SettingsScreenState extends State<SettingsScreen> {
             // 简化的头部
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-                child: Text(
-                  '设置',
-                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+                padding: const EdgeInsets.fromLTRB(20, 16, 12, 8),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '设置',
+                        style: Theme.of(context)
+                            .textTheme
+                            .headlineMedium
+                            ?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => launchUrl(
+                        Uri.parse(
+                            'https://github.com/final00000000/Gift_Ledger'),
+                        mode: LaunchMode.externalApplication,
+                      ),
+                      icon: const FaIcon(FontAwesomeIcons.github,
+                          size: 22, color: Color(0xFF24292F)),
+                      style: IconButton.styleFrom(
+                        foregroundColor: AppTheme.textSecondary,
+                      ),
+                      tooltip: 'GitHub',
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -206,7 +308,7 @@ class SettingsScreenState extends State<SettingsScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                     // 安全与隐私
+                    // 安全与隐私
                     _buildSectionCard(
                       title: '安全与隐私',
                       children: [
@@ -214,7 +316,9 @@ class SettingsScreenState extends State<SettingsScreen> {
                           icon: Icons.security_rounded,
                           iconColor: _securityMode == SecurityService.modeNone
                               ? Colors.grey
-                              : (_securityMode == SecurityService.modeInvisible ? AppTheme.primaryColor : Colors.orange),
+                              : (_securityMode == SecurityService.modeInvisible
+                                  ? AppTheme.primaryColor
+                                  : Colors.orange),
                           title: '应用安全锁',
                           subtitle: _getSecurityModeText(_securityMode),
                           onTap: () => _showSecurityModePicker(),
@@ -253,8 +357,9 @@ class SettingsScreenState extends State<SettingsScreen> {
                           value: _statsIncludeEventBooks,
                           onChanged: (v) async {
                             await _db.setStatsIncludeEventBooks(v);
+                            if (!context.mounted) return;
                             setState(() => _statsIncludeEventBooks = v);
-                            if (mounted) CustomToast.show(context, '设置已保存');
+                            CustomToast.show(context, '设置已保存');
                           },
                         ),
                         const Divider(height: 1, indent: 52),
@@ -266,8 +371,9 @@ class SettingsScreenState extends State<SettingsScreen> {
                           value: _eventBooksEnabled,
                           onChanged: (v) async {
                             await _db.setEventBooksEnabled(v);
+                            if (!context.mounted) return;
                             setState(() => _eventBooksEnabled = v);
-                            if (mounted) CustomToast.show(context, '设置已保存');
+                            CustomToast.show(context, '设置已保存');
                           },
                         ),
                       ],
@@ -285,8 +391,9 @@ class SettingsScreenState extends State<SettingsScreen> {
                           value: _useFuzzyAmount,
                           onChanged: (v) async {
                             await _templateService.setUseFuzzyAmount(v);
+                            if (!context.mounted) return;
                             setState(() => _useFuzzyAmount = v);
-                            if (mounted) CustomToast.show(context, '设置已保存');
+                            CustomToast.show(context, '设置已保存');
                           },
                         ),
                         const Divider(height: 1, indent: 56),
@@ -297,7 +404,8 @@ class SettingsScreenState extends State<SettingsScreen> {
                           subtitle: '自定义提醒消息模板',
                           onTap: () => Navigator.push(
                             context,
-                            MaterialPageRoute(builder: (_) => const TemplateSettingsScreen()),
+                            MaterialPageRoute(
+                                builder: (_) => const TemplateSettingsScreen()),
                           ),
                         ),
                         const Divider(height: 1, indent: 56),
@@ -309,8 +417,12 @@ class SettingsScreenState extends State<SettingsScreen> {
                           value: _notificationsEnabled,
                           onChanged: (v) async {
                             await _notificationService.setEnabled(v);
+                            if (!context.mounted) return;
                             setState(() => _notificationsEnabled = v);
-                            if (mounted) CustomToast.show(context, v ? '已开启每月提醒' : '已关闭每月提醒');
+                            CustomToast.show(
+                              context,
+                              v ? '已开启每月提醒' : '已关闭每月提醒',
+                            );
                           },
                         ),
                       ],
@@ -333,10 +445,12 @@ class SettingsScreenState extends State<SettingsScreen> {
                           iconColor: AppTheme.primaryColor,
                           title: '导入数据',
                           subtitle: '恢复备份或从 Excel 导入',
-                          onTap: () => ExportDialogs.showImportOptions(context, () {
+                          onTap: () =>
+                              ExportDialogs.showImportOptions(context, () {
                             if (mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('数据导入成功，请下拉刷新首页查看')),
+                                const SnackBar(
+                                    content: Text('数据导入成功，请下拉刷新首页查看')),
                               );
                             }
                           }),
@@ -345,36 +459,39 @@ class SettingsScreenState extends State<SettingsScreen> {
                     ),
                     const SizedBox(height: 16),
                     // 账户
-                    Consumer(
-                      builder: (context, ref, _) {
-                        final authState = ref.watch(authStateProvider);
-                        return _buildSectionCard(
-                          title: '账户',
-                          children: [
-                            if (authState.isAuthenticated)
-                              _buildNavigationTile(
-                                icon: Icons.logout_rounded,
-                                iconColor: Colors.redAccent,
-                                title: '退出登录',
-                                subtitle: authState.email ?? '',
-                                onTap: () {
-                                  ref.read(authStateProvider.notifier).logout();
-                                  ref.read(authTokenProvider.notifier).state = null;
-                                  if (mounted) CustomToast.show(context, '已退出登录');
-                                },
-                              )
-                            else
-                              _buildNavigationTile(
-                                icon: Icons.login_rounded,
-                                iconColor: AppTheme.primaryColor,
-                                title: '登录 / 注册',
-                                subtitle: '登录后可同步数据到云端',
-                                onTap: () => Navigator.push(
-                                  context,
-                                  MaterialPageRoute(builder: (_) => const LoginScreen()),
-                                ),
-                              ),
-                          ],
+                    Builder(
+                      builder: (context) {
+                        return Consumer(
+                          builder: (context, ref, _) {
+                            final authState = ref.watch(authStateProvider);
+                            return _buildSectionCard(
+                              title: '账户',
+                              children: [
+                                if (authState.isAuthenticated)
+                                  _buildNavigationTile(
+                                    icon: Icons.logout_rounded,
+                                    iconColor: Colors.redAccent,
+                                    title: '退出登录',
+                                    subtitle: authState.email ?? '',
+                                    onTap: () {
+                                      ref.read(authStateProvider.notifier).logout();
+                                      CustomToast.show(context, '已退出登录');
+                                    },
+                                  )
+                                else
+                                  _buildNavigationTile(
+                                    icon: Icons.login_rounded,
+                                    iconColor: AppTheme.primaryColor,
+                                    title: '登录 / 注册',
+                                    subtitle: '登录后可同步数据到云端',
+                                    onTap: () => Navigator.push(
+                                      context,
+                                      MaterialPageRoute(builder: (_) => const LoginScreen()),
+                                    ),
+                                  ),
+                              ],
+                            );
+                          },
                         );
                       },
                     ),
@@ -383,20 +500,29 @@ class SettingsScreenState extends State<SettingsScreen> {
                     _buildSectionCard(
                       title: '关于',
                       children: [
-                        ListTile(
-                          leading: Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: AppTheme.primaryColor.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: const Icon(Icons.info_outline_rounded, color: AppTheme.primaryColor, size: 20),
-                          ),
-                          title: const Text('随礼记', style: TextStyle(fontWeight: FontWeight.w600)),
-                          trailing: Text(
-                            _appVersion.isEmpty ? 'v--' : 'v$_appVersion',
-                            style: const TextStyle(color: AppTheme.textSecondary),
-                          ),
+                        Selector<UpdateController,
+                            ({bool showRedDot, String? chipText})>(
+                          selector: (_, controller) =>
+                              _resolveAboutUpdateEntryState(controller.state),
+                          builder: (context, aboutUpdateState, _) {
+                            return AboutAppEntryTile(
+                              currentVersion: _appVersion,
+                              showRedDot: aboutUpdateState.showRedDot,
+                              showUpdateChip: aboutUpdateState.chipText != null,
+                              updateChipText:
+                                  aboutUpdateState.chipText ?? '发现新版本',
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => AboutAppScreen(
+                                      currentVersion: _appVersion,
+                                    ),
+                                  ),
+                                );
+                              },
+                            );
+                          },
                         ),
                       ],
                     ),
@@ -426,16 +552,23 @@ class SettingsScreenState extends State<SettingsScreen> {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (context) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             const SizedBox(height: 12),
-            Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2))),
+            Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                    color: Colors.grey[300],
+                    borderRadius: BorderRadius.circular(2))),
             const Padding(
               padding: EdgeInsets.all(24),
-              child: Text('选择安全模式', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+              child: Text('选择安全模式',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
             ),
             _buildModeOption(
               mode: SecurityService.modeNone,
@@ -496,9 +629,14 @@ class SettingsScreenState extends State<SettingsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title, style: TextStyle(fontWeight: FontWeight.w700, color: isSelected ? color : AppTheme.textPrimary)),
+                  Text(title,
+                      style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          color: isSelected ? color : AppTheme.textPrimary)),
                   const SizedBox(height: 4),
-                  Text(subtitle, style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+                  Text(subtitle,
+                      style: const TextStyle(
+                          fontSize: 12, color: AppTheme.textSecondary)),
                 ],
               ),
             ),
@@ -509,7 +647,8 @@ class SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Widget _buildSectionCard({required String title, required List<Widget> children}) {
+  Widget _buildSectionCard(
+      {required String title, required List<Widget> children}) {
     return Container(
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
@@ -554,8 +693,10 @@ class SettingsScreenState extends State<SettingsScreen> {
         ),
         child: Icon(icon, color: iconColor, size: 18),
       ),
-      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-      subtitle: Text(subtitle, style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
+      title: Text(title,
+          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+      subtitle: Text(subtitle,
+          style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
       trailing: Switch.adaptive(
         value: value,
         onChanged: onChanged,
@@ -582,9 +723,12 @@ class SettingsScreenState extends State<SettingsScreen> {
         ),
         child: Icon(icon, color: iconColor, size: 18),
       ),
-      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-      subtitle: Text(subtitle, style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
-      trailing: const Icon(Icons.chevron_right_rounded, color: AppTheme.textSecondary, size: 20),
+      title: Text(title,
+          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+      subtitle: Text(subtitle,
+          style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
+      trailing: const Icon(Icons.chevron_right_rounded,
+          color: AppTheme.textSecondary, size: 20),
       onTap: onTap,
       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
       visualDensity: VisualDensity.compact,

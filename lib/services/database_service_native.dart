@@ -285,6 +285,22 @@ class NativeDatabaseService {
     return (result.first['count'] as int?) ?? 0;
   }
 
+  Future<Map<int, int>> getEventBookGiftCounts(List<int> eventBookIds) async {
+    if (eventBookIds.isEmpty) {
+      return const <int, int>{};
+    }
+    final db = await database;
+    final placeholders = List.filled(eventBookIds.length, '?').join(',');
+    final result = await db.rawQuery(
+      'SELECT eventBookId, COUNT(*) as count FROM gifts WHERE eventBookId IN ($placeholders) GROUP BY eventBookId',
+      eventBookIds,
+    );
+    return {
+      for (final row in result)
+        row['eventBookId'] as int: (row['count'] as num).toInt(),
+    };
+  }
+
   // 统计
   Future<double> getTotalReceived({bool includeEventBooks = true}) async {
     final db = await database;

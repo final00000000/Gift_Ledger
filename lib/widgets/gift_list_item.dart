@@ -4,6 +4,7 @@ import '../models/gift.dart';
 import '../models/guest.dart';
 import '../theme/app_theme.dart';
 import '../utils/lunar_utils.dart';
+import 'gift_note_preview.dart';
 import 'privacy_aware_text.dart';
 
 class GiftListItem extends StatelessWidget {
@@ -37,7 +38,9 @@ class GiftListItem extends StatelessWidget {
           decoration: BoxDecoration(
             color: Theme.of(context).cardColor,
             borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
-            border: Border.all(color: Colors.black.withValues(alpha: 0.04)), // Visibility Border
+            border: Border.all(
+                color:
+                    Colors.black.withValues(alpha: 0.04)), // Visibility Border
             boxShadow: [
               BoxShadow(
                 color: Theme.of(context).shadowColor.withValues(alpha: 0.04),
@@ -90,25 +93,42 @@ class GiftListItem extends StatelessWidget {
                       children: [
                         Row(
                           children: [
-                            Text(
-                              guest?.name ?? '未知',
-                              style: Theme.of(context).textTheme.titleMedium,
+                            Expanded(
+                              child: Text(
+                                guest?.name ?? '未知',
+                                style: Theme.of(context).textTheme.titleMedium,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
                             const SizedBox(width: AppTheme.spacingS),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: AppTheme.spacingS,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: Text(
-                                gift.eventType,
-                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                  color: Theme.of(context).textTheme.bodyMedium?.color,
-                                  fontSize: 11,
+                            Flexible(
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: AppTheme.spacingS,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .surfaceContainerHighest
+                                      .withValues(alpha: 0.5),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  gift.eventType,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .bodySmall
+                                      ?.copyWith(
+                                        color: Theme.of(context)
+                                            .textTheme
+                                            .bodyMedium
+                                            ?.color,
+                                        fontSize: 11,
+                                      ),
                                 ),
                               ),
                             ),
@@ -118,11 +138,14 @@ class GiftListItem extends StatelessWidget {
                         Row(
                           children: [
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 6, vertical: 2),
                               decoration: BoxDecoration(
-                                color: gift.isReceived 
-                                    ? AppTheme.primaryColor.withValues(alpha: 0.12) 
-                                    : AppTheme.accentColor.withValues(alpha: 0.12),
+                                color: gift.isReceived
+                                    ? AppTheme.primaryColor
+                                        .withValues(alpha: 0.12)
+                                    : AppTheme.accentColor
+                                        .withValues(alpha: 0.12),
                                 borderRadius: BorderRadius.circular(4),
                               ),
                               child: Text(
@@ -130,8 +153,8 @@ class GiftListItem extends StatelessWidget {
                                 style: TextStyle(
                                   fontSize: 11,
                                   fontWeight: FontWeight.w600,
-                                  color: gift.isReceived 
-                                      ? AppTheme.primaryColor 
+                                  color: gift.isReceived
+                                      ? AppTheme.primaryColor
                                       : AppTheme.accentColor,
                                 ),
                               ),
@@ -140,13 +163,26 @@ class GiftListItem extends StatelessWidget {
                             Flexible(
                               child: Text(
                                 '${dateFormat.format(gift.date)} (${LunarUtils.getLunarDateString(gift.date)})',
-                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                  color: Theme.of(context).textTheme.bodySmall?.color?.withValues(alpha: 0.7),
-                                ),
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodySmall
+                                    ?.copyWith(
+                                      color: Theme.of(context)
+                                          .textTheme
+                                          .bodySmall
+                                          ?.color
+                                          ?.withValues(alpha: 0.7),
+                                    ),
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ),
                           ],
+                        ),
+                        GiftNotePreview(
+                          note: gift.note,
+                          maxLines: 1,
+                          fontSize: 11,
+                          topSpacing: AppTheme.spacingXS,
                         ),
                       ],
                     ),
@@ -155,11 +191,11 @@ class GiftListItem extends StatelessWidget {
                   PrivacyAwareText(
                     '${gift.isReceived ? "+" : "-"}¥${gift.amount.toStringAsFixed(0)}',
                     style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      color: gift.isReceived
-                          ? AppTheme.primaryColor
-                          : AppTheme.accentColor,
-                      fontWeight: FontWeight.bold,
-                    ),
+                          color: gift.isReceived
+                              ? AppTheme.primaryColor
+                              : AppTheme.accentColor,
+                          fontWeight: FontWeight.bold,
+                        ),
                   ),
                 ],
               ),

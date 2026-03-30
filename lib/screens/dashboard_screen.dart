@@ -3,11 +3,14 @@ import 'package:intl/intl.dart';
 import '../models/gift.dart';
 import '../models/guest.dart';
 import '../services/storage_service.dart';
+import '../services/dashboard_computation_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/lunar_utils.dart';
-import '../widgets/empty_state.dart';
+import '../widgets/dashboard/dashboard_empty_state.dart';
+import '../widgets/dashboard/dashboard_fab.dart';
+import '../widgets/dashboard/dashboard_header.dart';
+import '../widgets/dashboard/dashboard_recent_section_header.dart';
 import '../widgets/skeleton.dart';
-import '../widgets/app_logo.dart';
 import '../widgets/hero_section.dart';
 import '../widgets/horizontal_quick_actions.dart';
 import '../widgets/grouped_timeline.dart';
@@ -18,8 +21,42 @@ import 'record_list_screen.dart';
 import 'pending_list_screen.dart';
 import 'event_book_list_screen.dart';
 
+class DashboardPreviewData {
+  const DashboardPreviewData({
+    this.totalReceived = 0,
+    this.totalSent = 0,
+    this.recentGifts = const <Gift>[],
+    this.guestMap = const <int, Guest>{},
+    this.pendingCount = 0,
+    this.eventBooksEnabled = true,
+  });
+
+  final double totalReceived;
+  final double totalSent;
+  final List<Gift> recentGifts;
+  final Map<int, Guest> guestMap;
+  final int pendingCount;
+  final bool eventBooksEnabled;
+
+  DashboardSnapshot toSnapshot() {
+    return DashboardSnapshot(
+      totalReceived: totalReceived,
+      totalSent: totalSent,
+      recentGifts: recentGifts,
+      guestMap: guestMap,
+      pendingCount: pendingCount,
+      eventBooksEnabled: eventBooksEnabled,
+    );
+  }
+}
+
 class DashboardScreen extends StatefulWidget {
-  const DashboardScreen({super.key});
+  const DashboardScreen({
+    super.key,
+    this.previewData,
+  });
+
+  final DashboardPreviewData? previewData;
 
   @override
   DashboardScreenState createState() => DashboardScreenState();
@@ -27,31 +64,45 @@ class DashboardScreen extends StatefulWidget {
 
 class DashboardScreenState extends State<DashboardScreen>
     with SingleTickerProviderStateMixin {
+  static const Duration _entranceAnimationDuration = Duration(milliseconds: 360);
+  static const Duration _gridAnimationDelay = Duration(milliseconds: 120);
+  static const double _headerAnimationOffset = 12;
+  static const double _heroAnimationOffset = 16;
+  static const double _gridAnimationOffset = 16;
+
   final StorageService _db = StorageService();
+  final DashboardComputationService _dashboardComputationService =
+      const DashboardComputationService();
+  final SecurityService _securityService = SecurityService();
   double _totalReceived = 0;
   double _totalSent = 0;
   List<Gift> _recentGifts = [];
   Map<int, Guest> _guestMap = {};
+  DashboardSnapshot? _snapshot;
+  late List<HorizontalActionItem> _quickActions;
   bool _isLoading = true;
-  int _pendingCount = 0;
-  bool _eventBooksEnabled = true;
-  final SecurityService _securityService = SecurityService();
-  bool _isFirstLoad = true;  // 标记是否首次加载，用于控制入场动画
+  bool _isFirstLoad = true;
 
-  // 动画控制器
   late AnimationController _animationController;
   late Animation<double> _headerAnimation;
   late Animation<double> _heroAnimation;
   late Animation<double> _gridAnimation;
-  late Animation<double> _listAnimation;
 
   /// 验证安全锁，返回是否通过验证（统一入口，避免各页面重复实现）
-  Future<bool> _verifySecurityLock() => _securityService.ensureUnlocked(context);
+  Future<bool> _verifySecurityLock() =>
+      _securityService.ensureUnlocked(context);
 
   @override
   void initState() {
     super.initState();
     _initAnimations();
+    final previewData = widget.previewData;
+    if (previewData != null) {
+      _applyPreviewData(previewData);
+      return;
+    }
+
+    _quickActions = const <HorizontalActionItem>[];
     _db.addListener(_onDataChanged);
     _loadData();
   }
@@ -59,36 +110,22 @@ class DashboardScreenState extends State<DashboardScreen>
   void _initAnimations() {
     _animationController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 800), // 从 1400ms 优化到 800ms
+      duration: _entranceAnimationDuration,
     );
 
-    // 分层动画 - 头部 → 英雄区 → 洞察卡片 → 网格 → 列表
-    _headerAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _animationController,
-        curve: const Interval(0.0, 0.25, curve: Curves.easeOutCubic),
-      ),
+    _headerAnimation = CurvedAnimation(
+      parent: _animationController,
+      curve: const Interval(0.0, 0.36, curve: Curves.easeOutCubic),
     );
 
-    _heroAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _animationController,
-        curve: const Interval(0.1, 0.4, curve: Curves.easeOutCubic),
-      ),
+    _heroAnimation = CurvedAnimation(
+      parent: _animationController,
+      curve: const Interval(0.12, 0.58, curve: Curves.easeOutCubic),
     );
 
-    _gridAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _animationController,
-        curve: const Interval(0.4, 0.7, curve: Curves.easeOutCubic),
-      ),
-    );
-
-    _listAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _animationController,
-        curve: const Interval(0.55, 1.0, curve: Curves.easeOutCubic),
-      ),
+    _gridAnimation = CurvedAnimation(
+      parent: _animationController,
+      curve: const Interval(0.24, 1.0, curve: Curves.easeOutCubic),
     );
   }
 
@@ -101,8 +138,57 @@ class DashboardScreenState extends State<DashboardScreen>
   @override
   void dispose() {
     _animationController.dispose();
-    _db.removeListener(_onDataChanged);
+    if (widget.previewData == null) {
+      _db.removeListener(_onDataChanged);
+    }
     super.dispose();
+  }
+
+  void _applyPreviewData(DashboardPreviewData previewData) {
+    final snapshot = previewData.toSnapshot();
+    _totalReceived = snapshot.totalReceived;
+    _totalSent = snapshot.totalSent;
+    _recentGifts = snapshot.recentGifts;
+    _guestMap = snapshot.guestMap;
+    _snapshot = snapshot;
+    _quickActions = _createQuickActions(snapshot);
+    _isLoading = false;
+  }
+
+  List<HorizontalActionItem> _createQuickActions(DashboardSnapshot snapshot) {
+    final items = <HorizontalActionItem>[];
+
+    if (snapshot.eventBooksEnabled) {
+      items.add(
+        HorizontalActionItem(
+          title: '活动簿',
+          icon: Icons.book_rounded,
+          color: AppTheme.eventBookColor,
+          onTap: _openEventBooks,
+        ),
+      );
+    }
+
+    items.add(
+      HorizontalActionItem(
+        title: '待处理',
+        icon: Icons.pending_actions_rounded,
+        color: AppTheme.pendingColor,
+        badge: snapshot.pendingCount > 0 ? snapshot.pendingCount : null,
+        onTap: _openPendingList,
+      ),
+    );
+
+    items.add(
+      HorizontalActionItem(
+        title: '记录',
+        icon: Icons.list_alt_rounded,
+        color: const Color(0xFF06B6D4),
+        onTap: _openRecordList,
+      ),
+    );
+
+    return List.unmodifiable(items);
   }
 
   Future<void> _loadData() async {
@@ -121,20 +207,25 @@ class DashboardScreenState extends State<DashboardScreen>
       ]);
 
       if (mounted) {
-        final guests = results[3] as List<Guest>;
-        final guestMap = {for (var g in guests) g.id!: g};
+        final snapshot = _dashboardComputationService.buildSnapshot(
+          totalReceived: results[0] as double,
+          totalSent: results[1] as double,
+          recentGifts: results[2] as List<Gift>,
+          guests: results[3] as List<Guest>,
+          pendingCount: results[4] as int,
+          eventBooksEnabled: eventBooksEnabled,
+        );
 
         setState(() {
-          _totalReceived = results[0] as double;
-          _totalSent = results[1] as double;
-          _recentGifts = (results[2] as List<Gift>).take(10).toList();
-          _guestMap = guestMap;
-          _pendingCount = results[4] as int;
-          _eventBooksEnabled = eventBooksEnabled;
+          _totalReceived = snapshot.totalReceived;
+          _totalSent = snapshot.totalSent;
+          _recentGifts = snapshot.recentGifts;
+          _guestMap = snapshot.guestMap;
+          _snapshot = snapshot;
+          _quickActions = _createQuickActions(snapshot);
           _isLoading = false;
         });
 
-        // 只在首次加载时播放入场动画
         if (_isFirstLoad) {
           _isFirstLoad = false;
           _animationController.forward(from: 0.0);
@@ -145,10 +236,17 @@ class DashboardScreenState extends State<DashboardScreen>
       final eventBooksEnabled = await _db.getEventBooksEnabled();
       if (mounted) {
         setState(() {
-          _eventBooksEnabled = eventBooksEnabled;
+          _snapshot = DashboardSnapshot(
+            totalReceived: _totalReceived,
+            totalSent: _totalSent,
+            recentGifts: _recentGifts,
+            guestMap: _guestMap,
+            pendingCount: _snapshot?.pendingCount ?? 0,
+            eventBooksEnabled: eventBooksEnabled,
+          );
+          _quickActions = _createQuickActions(_snapshot!);
           _isLoading = false;
         });
-        // 只在首次加载时播放入场动画
         if (_isFirstLoad) {
           _isFirstLoad = false;
           _animationController.forward(from: 0.0);
@@ -159,6 +257,33 @@ class DashboardScreenState extends State<DashboardScreen>
 
   void refreshData() {
     _loadData();
+  }
+
+  void _openEventBooks() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const EventBookListScreen(),
+      ),
+    ).then((_) => refreshData());
+  }
+
+  void _openPendingList() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const PendingListScreen(),
+      ),
+    ).then((_) => refreshData());
+  }
+
+  void _openRecordList() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const RecordListScreen(),
+      ),
+    ).then((_) => refreshData());
   }
 
   void _navigateToRecordList(bool isReceived) {
@@ -172,7 +297,7 @@ class DashboardScreenState extends State<DashboardScreen>
           const end = Offset.zero;
           const curve = Curves.easeInOut;
 
-          var tween = Tween(begin: begin, end: end).chain(
+          final tween = Tween(begin: begin, end: end).chain(
             CurveTween(curve: curve),
           );
 
@@ -185,9 +310,43 @@ class DashboardScreenState extends State<DashboardScreen>
     ).then((_) => refreshData());
   }
 
+  Future<void> _handleSecurityPressed(bool isUnlocked) async {
+    if (isUnlocked) {
+      _securityService.lock();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('金额已隐藏'),
+          duration: const Duration(seconds: 1),
+          backgroundColor: AppTheme.primaryColor,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
+      );
+      return;
+    }
+
+    await _securityService.ensureUnlocked(context);
+  }
+
+  Future<void> _openAddRecord() async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const AddRecordScreen(),
+      ),
+    );
+    if (mounted && result == true) {
+      _loadData();
+    }
+  }
+
   void _showGiftDetail(Gift gift, Guest? guest) {
     final guestName = guest?.name ?? '未知联系人';
-    final itemColor = gift.isReceived ? AppTheme.primaryColor : AppTheme.accentColor;
+    final itemColor =
+        gift.isReceived ? AppTheme.primaryColor : AppTheme.accentColor;
 
     showModalBottomSheet(
       context: context,
@@ -269,14 +428,15 @@ class DashboardScreenState extends State<DashboardScreen>
                 Expanded(
                   child: OutlinedButton.icon(
                     onPressed: () async {
+                      final navigator = Navigator.of(context);
                       if (!await _verifySecurityLock()) return;
                       if (!mounted) return;
 
-                      Navigator.pop(context);
-                      final result = await Navigator.push(
-                        context,
+                      navigator.pop();
+                      final result = await navigator.push(
                         MaterialPageRoute(
-                          builder: (context) => AddRecordScreen(editingGift: gift, editingGuest: guest),
+                          builder: (context) => AddRecordScreen(
+                              editingGift: gift, editingGuest: guest),
                         ),
                       );
                       if (result == true) {
@@ -294,10 +454,11 @@ class DashboardScreenState extends State<DashboardScreen>
                 Expanded(
                   child: FilledButton.icon(
                     onPressed: () async {
+                      final navigator = Navigator.of(context);
                       if (!await _verifySecurityLock()) return;
                       if (!mounted) return;
 
-                      Navigator.pop(context);
+                      navigator.pop();
                       _confirmDelete(gift, guestName);
                     },
                     icon: const Icon(Icons.delete_outline),
@@ -352,11 +513,15 @@ class DashboardScreenState extends State<DashboardScreen>
     if (!await _verifySecurityLock()) return;
     if (!mounted) return;
 
+    final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('确认删除'),
-        content: Text('确定要删除这条记录吗？\n\n$guestName · ${gift.eventType}\n¥${gift.amount.toStringAsFixed(0)}'),
+        content: Text(
+            '确定要删除这条记录吗？\n\n$guestName · ${gift.eventType}\n¥${gift.amount.toStringAsFixed(0)}'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -365,13 +530,13 @@ class DashboardScreenState extends State<DashboardScreen>
           FilledButton(
             onPressed: () async {
               await _db.deleteGift(gift.id!);
-              if (mounted) {
-                Navigator.pop(context);
-                _loadData();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('已删除')),
-                );
-              }
+              if (!mounted) return;
+
+              navigator.pop();
+              _loadData();
+              messenger.showSnackBar(
+                const SnackBar(content: Text('已删除')),
+              );
             },
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             child: const Text('删除'),
@@ -381,65 +546,67 @@ class DashboardScreenState extends State<DashboardScreen>
     );
   }
 
-  /// 构建横向快捷操作项列表
-  List<HorizontalActionItem> _buildHorizontalActions() {
-    final items = <HorizontalActionItem>[];
 
-    // 活动簿（如果启用）
-    if (_eventBooksEnabled) {
-      items.add(HorizontalActionItem(
-        title: '活动簿',
-        icon: Icons.book_rounded,
-        color: AppTheme.eventBookColor,
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => const EventBookListScreen(),
-            ),
-          ).then((_) => refreshData());
+  Widget _buildEntranceTransition({
+    required Animation<double> animation,
+    required double offset,
+    required Widget child,
+  }) {
+    return FadeTransition(
+      opacity: animation,
+      child: AnimatedBuilder(
+        animation: animation,
+        child: child,
+        builder: (context, animatedChild) {
+          return Transform.translate(
+            offset: Offset(0, offset * (1 - animation.value)),
+            child: animatedChild,
+          );
         },
-      ));
-    }
+      ),
+    );
+  }
 
-    // 待处理
-    items.add(HorizontalActionItem(
-      title: '待处理',
-      icon: Icons.pending_actions_rounded,
-      color: AppTheme.pendingColor,
-      badge: _pendingCount > 0 ? _pendingCount : null,
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => const PendingListScreen(),
-          ),
-        ).then((_) => refreshData());
+  Widget _buildSecurityAwareSummary() {
+    return ValueListenableBuilder<bool>(
+      valueListenable: _securityService.isUnlocked,
+      builder: (context, isUnlocked, _) {
+        return SliverList(
+          delegate: SliverChildListDelegate.fixed([
+            _buildEntranceTransition(
+              animation: _headerAnimation,
+              offset: _headerAnimationOffset,
+              child: RepaintBoundary(
+                child: DashboardHeader(
+                  isUnlocked: isUnlocked,
+                  onSecurityPressed: () => _handleSecurityPressed(isUnlocked),
+                ),
+              ),
+            ),
+            _buildEntranceTransition(
+              animation: _heroAnimation,
+              offset: _heroAnimationOffset,
+              child: RepaintBoundary(
+                child: HeroSection(
+                  totalReceived: _totalReceived,
+                  totalSent: _totalSent,
+                  isUnlocked: isUnlocked,
+                  onReceivedTap: () => _navigateToRecordList(true),
+                  onSentTap: () => _navigateToRecordList(false),
+                ),
+              ),
+            ),
+            const SizedBox(height: AppTheme.spacingM),
+          ]),
+        );
       },
-    ));
-
-    // 全部记录
-    items.add(HorizontalActionItem(
-      title: '记录',
-      icon: Icons.list_alt_rounded,
-      color: const Color(0xFF06B6D4),
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => const RecordListScreen(),
-          ),
-        ).then((_) => refreshData());
-      },
-    ));
-
-    return items;
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final bottomPadding = MediaQuery.of(context).padding.bottom;
-    final fabBottom = 64.0 + (bottomPadding > 12 ? bottomPadding : 12.0) + 16.0; // dock高度 + 安全区域 + 间距
+    final quickActions = _snapshot == null ? const <HorizontalActionItem>[] : _quickActions;
 
     return Scaffold(
       body: Stack(
@@ -455,312 +622,86 @@ class DashboardScreenState extends State<DashboardScreen>
                       child: DashboardSkeleton(),
                     )
                   else ...[
-                // 头部标题 - 带动画
-                SliverToBoxAdapter(
-                  child: AnimatedBuilder(
-                    animation: _headerAnimation,
-                    builder: (context, child) {
-                      return Transform.translate(
-                        offset: Offset(0, 20 * (1 - _headerAnimation.value)),
-                        child: Opacity(
-                          opacity: _headerAnimation.value,
-                          child: child,
-                        ),
-                      );
-                    },
-                    child: _buildHeader(),
-                  ),
-                ),
-
-                // Hero Section - 带动画
-                SliverToBoxAdapter(
-                  child: AnimatedBuilder(
-                    animation: _heroAnimation,
-                    builder: (context, child) {
-                      return Transform.translate(
-                        offset: Offset(0, 30 * (1 - _heroAnimation.value)),
-                        child: Opacity(
-                          opacity: _heroAnimation.value,
-                          child: child,
-                        ),
-                      );
-                    },
-                    child: HeroSection(
-                      totalReceived: _totalReceived,
-                      totalSent: _totalSent,
-                      onReceivedTap: () => _navigateToRecordList(true),
-                      onSentTap: () => _navigateToRecordList(false),
-                    ),
-                  ),
-                ),
-
-                const SliverToBoxAdapter(
-                  child: SizedBox(height: AppTheme.spacingM),
-                ),
-
-                // 横向快捷操作 - 带动画
-                SliverToBoxAdapter(
-                  child: AnimatedBuilder(
-                    animation: _gridAnimation,
-                    builder: (context, child) {
-                      return Transform.translate(
-                        offset: Offset(0, 30 * (1 - _gridAnimation.value)),
-                        child: Opacity(
-                          opacity: _gridAnimation.value,
-                          child: child,
-                        ),
-                      );
-                    },
-                    child: HorizontalQuickActions(
-                      items: _buildHorizontalActions(),
-                      animationDelay: const Duration(milliseconds: 200), // 从 400ms 优化到 200ms
-                    ),
-                  ),
-                ),
-
-                const SliverToBoxAdapter(
-                  child: SizedBox(height: AppTheme.spacingXL),
-                ),
-
-                // 最近记录标题 - 带动画
-                SliverToBoxAdapter(
-                  child: AnimatedBuilder(
-                    animation: _listAnimation,
-                    builder: (context, child) {
-                      return Opacity(
-                        opacity: _listAnimation.value,
-                        child: child,
-                      );
-                    },
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: AppTheme.spacingM,
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Row(
-                            children: [
-                              // 简洁装饰条
-                              Container(
-                                width: 3,
-                                height: 18,
-                                decoration: BoxDecoration(
-                                  color: AppTheme.primaryColor,
-                                  borderRadius: BorderRadius.circular(2),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                '最近记录',
-                                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
+                    _buildSecurityAwareSummary(),
+                    SliverToBoxAdapter(
+                      child: _buildEntranceTransition(
+                        animation: _gridAnimation,
+                        offset: _gridAnimationOffset,
+                        child: RepaintBoundary(
+                          child: HorizontalQuickActions(
+                            items: quickActions,
+                            animationDelay: _gridAnimationDelay,
                           ),
-                          if (_recentGifts.isNotEmpty)
-                            TextButton(
-                              onPressed: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) => const RecordListScreen(),
-                                  ),
-                                ).then((_) => refreshData());
-                              },
-                              style: TextButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 4,
-                                ),
-                                minimumSize: Size.zero,
-                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    '查看全部',
-                                    style: TextStyle(
-                                      color: AppTheme.textSecondary,
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                  Icon(
-                                    Icons.chevron_right_rounded,
-                                    size: 16,
-                                    color: AppTheme.textSecondary,
-                                  ),
-                                ],
-                              ),
-                            ),
-                        ],
+                        ),
                       ),
                     ),
-                  ),
-                ),
-
-                const SliverToBoxAdapter(
-                  child: SizedBox(height: AppTheme.spacingS),
-                ),
-
-                // 最近记录列表 - 分组时间轴样式
-                if (_recentGifts.isEmpty)
-                  SliverFillRemaining(
-                    child: _buildEmptyState(),
-                  )
-                else
-                  SliverToBoxAdapter(
-                    child: GroupedTimeline(
-                      gifts: _recentGifts,
-                      guestMap: _guestMap,
-                      animationDelay: const Duration(milliseconds: 300), // 从 600ms 优化到 300ms
-                      onTap: (gift, guest) async {
-                        if (!await _verifySecurityLock()) return;
-                        _showGiftDetail(gift, guest);
-                      },
-                      onEdit: (gift, guest) async {
-                        if (!await _verifySecurityLock()) return;
-                        final result = await Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => AddRecordScreen(
-                              editingGift: gift,
-                              editingGuest: guest,
-                            ),
-                          ),
-                        );
-                        if (result == true) {
-                          _loadData();
-                        }
-                      },
-                      onDelete: (gift) async {
-                        if (!await _verifySecurityLock()) return;
-                        await _db.deleteGift(gift.id!);
-                        _loadData();
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('已删除')),
-                          );
-                        }
-                      },
+                    const SliverToBoxAdapter(
+                      child: SizedBox(height: AppTheme.spacingXL),
                     ),
-                  ),
+                    SliverToBoxAdapter(
+                      child: DashboardRecentSectionHeader(
+                        hasRecords: _recentGifts.isNotEmpty,
+                        onViewAll: _openRecordList,
+                      ),
+                    ),
+                    const SliverToBoxAdapter(
+                      child: SizedBox(height: AppTheme.spacingS),
+                    ),
+                    if (_recentGifts.isEmpty)
+                      SliverFillRemaining(
+                        child: DashboardEmptyState(onAddRecord: _openAddRecord),
+                      )
+                    else
+                      SliverToBoxAdapter(
+                        child: GroupedTimeline(
+                          gifts: _recentGifts,
+                          guestMap: _guestMap,
+                          enableAnimations: false,
+                          onTap: (gift, guest) async {
+                            if (!await _verifySecurityLock()) return;
+                            _showGiftDetail(gift, guest);
+                          },
+                          onEdit: (gift, guest) async {
+                            final navigator = Navigator.of(context);
+                            if (!await _verifySecurityLock()) return;
+                            final result = await navigator.push(
+                              MaterialPageRoute(
+                                builder: (context) => AddRecordScreen(
+                                  editingGift: gift,
+                                  editingGuest: guest,
+                                ),
+                              ),
+                            );
+                            if (result == true) {
+                              _loadData();
+                            }
+                          },
+                          onDelete: (gift) async {
+                            final messenger = ScaffoldMessenger.of(context);
+                            if (!await _verifySecurityLock()) return;
+                            await _db.deleteGift(gift.id!);
+                            _loadData();
+                            if (!mounted) return;
 
-                // 底部间距
-                const SliverToBoxAdapter(
-                  child: SizedBox(height: 120),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
-      // FAB 放在 Stack 中，位于底部导航栏上方
-      Positioned(
-        right: 16,
-        bottom: fabBottom,
-        child: FloatingActionButton(
-          onPressed: () async {
-            final result = await Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => const AddRecordScreen(),
+                            messenger.showSnackBar(
+                              const SnackBar(content: Text('已删除')),
+                            );
+                          },
+                        ),
+                      ),
+                    const SliverToBoxAdapter(
+                      child: SizedBox(height: 120),
+                    ),
+                  ],
+                ],
               ),
-            );
-            if (mounted && result == true) {
-              _loadData();
-            }
-          },
-          backgroundColor: AppTheme.primaryColor,
-          child: const Icon(Icons.add, color: Colors.white),
-        ),
-      ),
-    ],
-  ),
-);
-  }
-
-  Widget _buildHeader() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        AppTheme.spacingM,
-        AppTheme.spacingM,
-        AppTheme.spacingM,
-        AppTheme.spacingS,
-      ),
-      child: Row(
-        children: [
-          const AppLogo(size: 44),
-          const SizedBox(width: AppTheme.spacingS),
-          Text(
-            '随礼记',
-            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-              fontWeight: FontWeight.w700,
             ),
           ),
-          const Spacer(),
-          // 安全锁按钮
-          ValueListenableBuilder<bool>(
-            valueListenable: _securityService.isUnlocked,
-            builder: (context, isUnlocked, child) {
-              return Container(
-                decoration: BoxDecoration(
-                  color: isUnlocked
-                      ? AppTheme.primaryColor.withValues(alpha: 0.08)
-                      : Colors.grey.withValues(alpha: 0.06),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: IconButton(
-                  onPressed: () async {
-                    if (isUnlocked) {
-                      _securityService.lock();
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: const Text('金额已隐藏'),
-                          duration: const Duration(seconds: 1),
-                          backgroundColor: AppTheme.primaryColor,
-                          behavior: SnackBarBehavior.floating,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                        ),
-                      );
-                    } else {
-                      await _securityService.ensureUnlocked(context);
-                    }
-                  },
-                  icon: Icon(
-                    isUnlocked
-                        ? Icons.visibility_rounded
-                        : Icons.visibility_off_rounded,
-                    color: isUnlocked ? AppTheme.primaryColor : AppTheme.textSecondary,
-                  ),
-                ),
-              );
-            },
+          DashboardFab(
+            bottomPadding: bottomPadding,
+            onPressed: _openAddRecord,
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildEmptyState() {
-    return EmptyStateWidget(
-      data: EmptyStates.noRecords(
-        onAction: () async {
-          final result = await Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => const AddRecordScreen(),
-            ),
-          );
-          if (result == true) {
-            _loadData();
-          }
-        },
       ),
     );
   }

@@ -1,32 +1,32 @@
-# Release Notes - v1.2.7
+# Release Notes - v1.3.3
 
-## 🎉 随礼记 v1.2.7
+## 🎉 随礼记 v1.3.3
 
-发布日期：2026-02-06
-
----
-
-## 📦 下载
-
-| 平台 | 文件 | 大小 |
-|------|------|------|
-| **Android (arm64)** | `gift_ledger_v1.2.7_arm64.apk` | 21.39 MB |
-| **Android (armeabi)** | `gift_ledger_v1.2.7_armeabi.apk` | 19.36 MB |
-| **Android (x86_64)** | `gift_ledger_v1.2.7_x86_64.apk` | 22.82 MB |
-| **Windows** | `gift_ledger_v1.2.7_windows.zip` | 13.36 MB |
-| **Web** | `gift_ledger_v1.2.7_web.zip` | 11.42 MB |
-| **iOS** | 需自行构建 | 参考 [docs/BUILD.md](./docs/BUILD.md) |
+发布日期：2026-03-29
 
 ---
 
 ## ✨ 更新内容
 
-### ⚙️ 配置与性能
-- 配置服务预加载，SharedPreferences 一次性缓存
-- Web 存储内存缓存与批量加载，减少序列化开销
+- 💾 `feat(backup)`: JSON 导出升级为完整备份，新增活动簿与更多字段的导入恢复
+- ⚙️ `feat(default-entry)`: 单条新增与批量新增统一遵循默认收礼 / 送礼设置
+- 🔐 `fix(security)`: PIN 与密保答案增加分级锁定与失败控制
+- 📊 `fix(statistics)`: 修复统计页年份筛选在窄屏下的溢出问题
+- ℹ️ `fix(update-ui)`: 不支持应用内更新的平台改为明确展示 unsupported 状态
+- 📦 `fix(android-release)`: 修复 `abiFilters` 与 split APK 发布参数冲突，恢复 Android Release 构建
+- 🪟 `fix(windows-release)`: 修复 GitHub Actions 在 PowerShell 下的 Windows 构建命令续行问题
+- 🍎 `build(ios-ipa)`: 为 GitHub Release 补充未签名 IPA，便于自行签名与验证
+- ♻️ `refactor(app-services)`: 拆分 StorageService 职责并下沉页面计算逻辑
+- 🧪 `test(flows)`: 新增覆盖主导航、新增记录、记录列表、待处理与统计筛选的关键流程测试
 
-### 🔓 安全与体验
-- 无锁模式不弹 PIN，避免首次进入竞态
+---
+
+## 📦 发布产物
+
+- Android：
+  - `gift_ledger-stable-android-v1.3.3-build1030399-armeabi-v7a.apk`
+  - `gift_ledger-stable-android-v1.3.3-build1030399-arm64-v8a.apk`
+- Windows：`gift_ledger-stable-windows-v1.3.3-build1030399-setup.exe`
 
 ---
 
