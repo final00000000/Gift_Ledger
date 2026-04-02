@@ -1,9 +1,21 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../services/http_client.dart';
 import '../services/api_config.dart';
 import '../services/api_interceptors.dart';
 import '../services/api_services.dart';
+
+const _kAccessToken = 'access_token';
+const _kRefreshToken = 'refresh_token';
+const _kUserId = 'user_id';
+const _kUsername = 'username';
+const _kEmail = 'email';
+const _kFullName = 'full_name';
+
+final secureStorageProvider = Provider<FlutterSecureStorage>(
+  (ref) => const FlutterSecureStorage(),
+);
 
 /// ============================================
 /// Dio 和 HttpClient Providers
@@ -17,12 +29,39 @@ final dioProvider = Provider<Dio>((ref) {
     receiveTimeout: ApiConfig.receiveTimeout,
   ));
 
-  // 添加 API 拦截器
   dio.interceptors.add(
     ApiInterceptor(
       getToken: () => ref.read(authTokenProvider),
-      onUnauthorized: () {
-        ref.read(authStateProvider.notifier).logout();
+      getRefreshToken: () => ref.read(refreshTokenProvider),
+      refreshTokens: (rt) async {
+        try {
+          final refreshDio = Dio(BaseOptions(
+            baseUrl: ApiConfig.baseUrl,
+            connectTimeout: ApiConfig.connectTimeout,
+            receiveTimeout: ApiConfig.receiveTimeout,
+          ));
+          final resp = await refreshDio.post(
+            ApiConfig.refresh,
+            data: {'refreshToken': rt},
+          );
+          final data = resp.data['data'] as Map<String, dynamic>?;
+          if (data != null) {
+            return {
+              'accessToken': data['accessToken'] as String,
+              'refreshToken': data['refreshToken'] as String,
+            };
+          }
+        } catch (_) {}
+        return null;
+      },
+      onTokensRefreshed: (accessToken, refreshToken) async {
+        await ref.read(authStateProvider.notifier).updateTokens(
+          accessToken: accessToken,
+          refreshToken: refreshToken,
+        );
+      },
+      onUnauthorized: () async {
+        await ref.read(authStateProvider.notifier).logout();
       },
     ),
   );
@@ -99,15 +138,19 @@ class AuthStateNotifier extends StateNotifier<AuthState> {
 
   AuthStateNotifier(this._ref) : super(AuthState());
 
-  /// 登录
-  void login({
-    required String userId,
-    required String username,
-    required String email,
-    required String fullName,
-    required String accessToken,
-    required String refreshToken,
-  }) {
+  FlutterSecureStorage get _storage => _ref.read(secureStorageProvider);
+
+  /// 从持久化存储恢复认证状态
+  Future<void> restoreAuth() async {
+    final accessToken = await _storage.read(key: _kAccessToken);
+    final refreshToken = await _storage.read(key: _kRefreshToken);
+    if (accessToken == null) return;
+
+    final userId = await _storage.read(key: _kUserId);
+    final username = await _storage.read(key: _kUsername);
+    final email = await _storage.read(key: _kEmail);
+    final fullName = await _storage.read(key: _kFullName);
+
     state = AuthState(
       isAuthenticated: true,
       userId: userId,
@@ -119,11 +162,51 @@ class AuthStateNotifier extends StateNotifier<AuthState> {
     _ref.read(refreshTokenProvider.notifier).state = refreshToken;
   }
 
+  /// 登录
+  Future<void> login({
+    required String userId,
+    required String username,
+    required String email,
+    required String fullName,
+    required String accessToken,
+    required String refreshToken,
+  }) async {
+    state = AuthState(
+      isAuthenticated: true,
+      userId: userId,
+      username: username,
+      email: email,
+      fullName: fullName,
+    );
+    _ref.read(authTokenProvider.notifier).state = accessToken;
+    _ref.read(refreshTokenProvider.notifier).state = refreshToken;
+
+    await _storage.write(key: _kAccessToken, value: accessToken);
+    await _storage.write(key: _kRefreshToken, value: refreshToken);
+    await _storage.write(key: _kUserId, value: userId);
+    await _storage.write(key: _kUsername, value: username);
+    await _storage.write(key: _kEmail, value: email);
+    await _storage.write(key: _kFullName, value: fullName);
+  }
+
   /// 登出
-  void logout() {
+  Future<void> logout() async {
     state = AuthState(isAuthenticated: false);
     _ref.read(authTokenProvider.notifier).state = null;
     _ref.read(refreshTokenProvider.notifier).state = null;
+
+    await _storage.deleteAll();
+  }
+
+  /// 更新 token（刷新后调用）
+  Future<void> updateTokens({
+    required String accessToken,
+    required String refreshToken,
+  }) async {
+    _ref.read(authTokenProvider.notifier).state = accessToken;
+    _ref.read(refreshTokenProvider.notifier).state = refreshToken;
+    await _storage.write(key: _kAccessToken, value: accessToken);
+    await _storage.write(key: _kRefreshToken, value: refreshToken);
   }
 
   /// 更新用户信息

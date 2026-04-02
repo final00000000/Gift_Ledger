@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart' hide ChangeNotifierProvider;
+import 'package:provider/provider.dart' hide Consumer;
 import '../theme/app_theme.dart';
 import '../widgets/custom_toast.dart';
 import '../widgets/export_dialogs.dart';
@@ -15,6 +15,7 @@ import '../services/update/update_controller.dart';
 import '../widgets/pin_code_dialog.dart';
 import '../widgets/update/about_app_entry_tile.dart';
 import '../providers/api_providers.dart';
+import '../services/sync_service.dart';
 import 'about_app_screen.dart';
 import 'login_screen.dart';
 import 'template_settings_screen.dart';
@@ -467,7 +468,17 @@ class SettingsScreenState extends State<SettingsScreen> {
                             return _buildSectionCard(
                               title: '账户',
                               children: [
-                                if (authState.isAuthenticated)
+                                if (authState.isAuthenticated) ...[
+                                  _buildNavigationTile(
+                                    icon: Icons.cloud_sync_rounded,
+                                    iconColor: AppTheme.primaryColor,
+                                    title: '同步数据',
+                                    subtitle: '上传本地数据到云端',
+                                    onTap: () {
+                                      ref.read(syncProvider.notifier).syncAll();
+                                      CustomToast.show(context, '开始同步...');
+                                    },
+                                  ),
                                   _buildNavigationTile(
                                     icon: Icons.logout_rounded,
                                     iconColor: Colors.redAccent,
@@ -477,7 +488,8 @@ class SettingsScreenState extends State<SettingsScreen> {
                                       ref.read(authStateProvider.notifier).logout();
                                       CustomToast.show(context, '已退出登录');
                                     },
-                                  )
+                                  ),
+                                ]
                                 else
                                   _buildNavigationTile(
                                     icon: Icons.login_rounded,

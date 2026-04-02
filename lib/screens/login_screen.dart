@@ -45,9 +45,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           email: _emailCtrl.text.trim(),
           password: _passwordCtrl.text,
         );
-        ref.read(authTokenProvider.notifier).state = resp.accessToken;
-        ref.read(refreshTokenProvider.notifier).state = resp.refreshToken;
-        ref.read(authStateProvider.notifier).login(
+        await ref.read(authStateProvider.notifier).login(
           userId: '',
           username: _emailCtrl.text.trim(),
           email: _emailCtrl.text.trim(),
@@ -62,14 +60,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           username: _usernameCtrl.text.trim(),
           fullName: _usernameCtrl.text.trim(),
         );
-        // 注册成功后直接登录
         final loginResp = await authService.login(
           email: _emailCtrl.text.trim(),
           password: _passwordCtrl.text,
         );
-        ref.read(authTokenProvider.notifier).state = loginResp.accessToken;
-        ref.read(refreshTokenProvider.notifier).state = loginResp.refreshToken;
-        ref.read(authStateProvider.notifier).login(
+        await ref.read(authStateProvider.notifier).login(
           userId: resp.userId,
           username: resp.username,
           email: resp.email,

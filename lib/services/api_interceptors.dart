@@ -1,14 +1,22 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
-/// Dio 拦截器 - 统一处理请求/响应/错误
-class ApiInterceptor extends Interceptor {
+/// Dio 拦截器 - 统一处理请求/响应/错误，支持自动 Token 刷新
+class ApiInterceptor extends QueuedInterceptor {
   final String? Function() getToken;
-  final VoidCallback? onUnauthorized;
+  final String? Function() getRefreshToken;
+  final Future<Map<String, String>?> Function(String refreshToken) refreshTokens;
+  final Future<void> Function(String accessToken, String refreshToken) onTokensRefreshed;
+  final Future<void> Function() onUnauthorized;
+
+  bool _isRefreshing = false;
 
   ApiInterceptor({
     required this.getToken,
-    this.onUnauthorized,
+    required this.getRefreshToken,
+    required this.refreshTokens,
+    required this.onTokensRefreshed,
+    required this.onUnauthorized,
   });
 
   @override
@@ -43,7 +51,7 @@ class ApiInterceptor extends Interceptor {
   }
 
   @override
-  void onError(DioException err, ErrorInterceptorHandler handler) {
+  void onError(DioException err, ErrorInterceptorHandler handler) async {
     if (kDebugMode) {
       print('❌ API Error: ${err.message}');
       print('🔍 Error Type: ${err.type}');
@@ -53,9 +61,28 @@ class ApiInterceptor extends Interceptor {
       }
     }
 
-    // 处理 401 未授权
-    if (err.response?.statusCode == 401) {
-      onUnauthorized?.call();
+    if (err.response?.statusCode == 401 && !_isRefreshing) {
+      _isRefreshing = true;
+      try {
+        final rt = getRefreshToken();
+        if (rt != null && rt.isNotEmpty) {
+          final tokens = await refreshTokens(rt);
+          if (tokens != null) {
+            await onTokensRefreshed(tokens['accessToken']!, tokens['refreshToken']!);
+            _isRefreshing = false;
+
+            // Retry the failed request
+            final opts = err.requestOptions;
+            opts.headers['Authorization'] = 'Bearer ${tokens['accessToken']}';
+            final response = await Dio().fetch(opts);
+            return handler.resolve(response);
+          }
+        }
+      } catch (_) {
+        // refresh failed
+      }
+      _isRefreshing = false;
+      await onUnauthorized();
     }
 
     super.onError(err, handler);

@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart'; // 启动页优化
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart' hide ChangeNotifierProvider, Consumer;
 import 'package:provider/provider.dart';
 
 import 'models/update_target.dart';
@@ -24,6 +24,9 @@ import 'services/update/update_repository.dart';
 import 'services/update/update_ui_coordinator.dart';
 import 'theme/app_theme.dart';
 import 'widgets/update/update_prompt_dialog.dart';
+
+import 'providers/api_providers.dart';
+import 'widgets/loading_overlay.dart';
 
 void main() async {
   // 1. 提前初始化 Flutter 绑定
@@ -45,7 +48,14 @@ void main() async {
   ));
 
   // 3. 🔑 优先启动 UI - 确保 Flutter 首帧尽快渲染
-  runApp(const ProviderScope(child: GiftMoneyTrackerApp()));
+  final container = ProviderContainer();
+  runApp(UncontrolledProviderScope(
+    container: container,
+    child: const GiftMoneyTrackerApp(),
+  ));
+
+  // 3.5 恢复认证状态（不阻塞首帧）
+  Future.microtask(() => container.read(authStateProvider.notifier).restoreAuth());
 
   // 4. 🔑 首帧渲染完成后，立即移除启动页（无缝切换）
   WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -96,6 +106,9 @@ class GiftMoneyTrackerApp extends StatelessWidget {
         scrollBehavior: const MaterialScrollBehavior().copyWith(
           overscroll: false,
         ),
+        builder: (context, child) {
+          return LoadingOverlay(child: child ?? const SizedBox.shrink());
+        },
         localizationsDelegates: const [
           GlobalMaterialLocalizations.delegate,
           GlobalWidgetsLocalizations.delegate,
