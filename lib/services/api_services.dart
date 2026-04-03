@@ -1,4 +1,3 @@
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/gift.dart';
 import '../models/guest.dart';
 import '../models/event_book.dart';
@@ -144,10 +143,10 @@ class RegisterResponse {
 
   factory RegisterResponse.fromJson(Map<String, dynamic> json) {
     return RegisterResponse(
-      userId: json['userId'] as String,
+      userId: (json['userId'] ?? json['id']) as String,
       username: json['username'] as String,
       email: json['email'] as String,
-      fullName: json['fullName'] as String,
+      fullName: (json['fullName'] as String?) ?? '',
       createdAt: DateTime.parse(json['createdAt'] as String),
     );
   }
@@ -174,7 +173,7 @@ class UserResponse {
       id: json['id'] as String,
       username: json['username'] as String,
       email: json['email'] as String,
-      fullName: json['fullName'] as String,
+      fullName: (json['fullName'] as String?) ?? '',
       createdAt: DateTime.parse(json['createdAt'] as String),
     );
   }
