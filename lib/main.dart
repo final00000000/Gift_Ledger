@@ -9,7 +9,7 @@ import 'package:provider/provider.dart';
 
 import 'models/update_target.dart';
 import 'screens/dashboard_screen.dart';
-import 'screens/settings_screen.dart';
+import 'screens/my_screen.dart';
 import 'screens/statistics_screen.dart';
 import 'services/config_service.dart';
 import 'services/db_init_native.dart'
@@ -170,7 +170,7 @@ class _MainNavigationState extends State<MainNavigation>
   final List<_NavItem> _navItems = [
     const _NavItem(label: '首页', icon: Icons.home_rounded),
     const _NavItem(label: '统计', icon: Icons.bar_chart_rounded),
-    const _NavItem(label: '设置', icon: Icons.settings_rounded),
+    const _NavItem(label: '我的', icon: Icons.person_rounded),
   ];
 
   // 缓存屏幕实例，避免每次访问都创建新实例
@@ -186,7 +186,7 @@ class _MainNavigationState extends State<MainNavigation>
         [
           const DashboardScreen(),
           const StatisticsScreen(),
-          const SettingsScreen(),
+          const MyScreen(),
         ];
   }
 

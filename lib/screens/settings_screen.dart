@@ -1,11 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart' hide ChangeNotifierProvider;
-import 'package:provider/provider.dart' hide Consumer;
+import 'package:provider/provider.dart';
 import '../theme/app_theme.dart';
 import '../widgets/custom_toast.dart';
-import '../widgets/export_dialogs.dart';
 import '../services/template_service.dart';
 import '../services/notification_service.dart';
 import '../services/storage_service.dart';
@@ -14,11 +10,7 @@ import '../services/update/app_build_info_service.dart';
 import '../services/update/update_controller.dart';
 import '../widgets/pin_code_dialog.dart';
 import '../widgets/update/about_app_entry_tile.dart';
-import '../providers/api_providers.dart';
-import '../services/sync_service.dart';
 import 'about_app_screen.dart';
-import 'login_screen.dart';
-import 'template_settings_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({
@@ -272,12 +264,22 @@ class SettingsScreenState extends State<SettingsScreen> {
             // 简化的头部
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 12, 8),
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
                 child: Row(
                   children: [
+                    IconButton(
+                      onPressed: () => Navigator.of(context).maybePop(),
+                      icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
+                      style: IconButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        foregroundColor: AppTheme.textPrimary,
+                      ),
+                      tooltip: '返回',
+                    ),
+                    const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        '设置',
+                        '应用设置',
                         style: Theme.of(context)
                             .textTheme
                             .headlineMedium
@@ -285,19 +287,6 @@ class SettingsScreenState extends State<SettingsScreen> {
                               fontWeight: FontWeight.w700,
                             ),
                       ),
-                    ),
-                    IconButton(
-                      onPressed: () => launchUrl(
-                        Uri.parse(
-                            'https://github.com/final00000000/Gift_Ledger'),
-                        mode: LaunchMode.externalApplication,
-                      ),
-                      icon: const FaIcon(FontAwesomeIcons.github,
-                          size: 22, color: Color(0xFF24292F)),
-                      style: IconButton.styleFrom(
-                        foregroundColor: AppTheme.textSecondary,
-                      ),
-                      tooltip: 'GitHub',
                     ),
                   ],
                 ),
@@ -398,18 +387,6 @@ class SettingsScreenState extends State<SettingsScreen> {
                           },
                         ),
                         const Divider(height: 1, indent: 56),
-                        _buildNavigationTile(
-                          icon: Icons.chat_bubble_outline_rounded,
-                          iconColor: AppTheme.primaryColor,
-                          title: '话术模板',
-                          subtitle: '自定义提醒消息模板',
-                          onTap: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (_) => const TemplateSettingsScreen()),
-                          ),
-                        ),
-                        const Divider(height: 1, indent: 56),
                         _buildSwitchTile(
                           icon: Icons.notifications_active_rounded,
                           iconColor: AppTheme.primaryColor,
@@ -427,85 +404,6 @@ class SettingsScreenState extends State<SettingsScreen> {
                           },
                         ),
                       ],
-                    ),
-                    const SizedBox(height: 16),
-                    // 数据管理
-                    _buildSectionCard(
-                      title: '数据管理',
-                      children: [
-                        _buildNavigationTile(
-                          icon: Icons.file_upload_outlined,
-                          iconColor: AppTheme.primaryColor,
-                          title: '导出数据',
-                          subtitle: '备份数据到本地或分享',
-                          onTap: () => ExportDialogs.showExportOptions(context),
-                        ),
-                        const Divider(height: 1, indent: 56),
-                        _buildNavigationTile(
-                          icon: Icons.file_download_outlined,
-                          iconColor: AppTheme.primaryColor,
-                          title: '导入数据',
-                          subtitle: '恢复备份或从 Excel 导入',
-                          onTap: () =>
-                              ExportDialogs.showImportOptions(context, () {
-                            if (mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                    content: Text('数据导入成功，请下拉刷新首页查看')),
-                              );
-                            }
-                          }),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    // 账户
-                    Builder(
-                      builder: (context) {
-                        return Consumer(
-                          builder: (context, ref, _) {
-                            final authState = ref.watch(authStateProvider);
-                            return _buildSectionCard(
-                              title: '账户',
-                              children: [
-                                if (authState.isAuthenticated) ...[
-                                  _buildNavigationTile(
-                                    icon: Icons.cloud_sync_rounded,
-                                    iconColor: AppTheme.primaryColor,
-                                    title: '同步数据',
-                                    subtitle: '上传本地数据到云端',
-                                    onTap: () {
-                                      ref.read(syncProvider.notifier).syncAll();
-                                      CustomToast.show(context, '开始同步...');
-                                    },
-                                  ),
-                                  _buildNavigationTile(
-                                    icon: Icons.logout_rounded,
-                                    iconColor: Colors.redAccent,
-                                    title: '退出登录',
-                                    subtitle: authState.email ?? '',
-                                    onTap: () {
-                                      ref.read(authStateProvider.notifier).logout();
-                                      CustomToast.show(context, '已退出登录');
-                                    },
-                                  ),
-                                ]
-                                else
-                                  _buildNavigationTile(
-                                    icon: Icons.login_rounded,
-                                    iconColor: AppTheme.primaryColor,
-                                    title: '登录 / 注册',
-                                    subtitle: '登录后可同步数据到云端',
-                                    onTap: () => Navigator.push(
-                                      context,
-                                      MaterialPageRoute(builder: (_) => const LoginScreen()),
-                                    ),
-                                  ),
-                              ],
-                            );
-                          },
-                        );
-                      },
                     ),
                     const SizedBox(height: 16),
                     // 关于

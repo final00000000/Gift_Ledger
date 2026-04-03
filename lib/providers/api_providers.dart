@@ -160,6 +160,38 @@ class AuthStateNotifier extends StateNotifier<AuthState> {
     );
     _ref.read(authTokenProvider.notifier).state = accessToken;
     _ref.read(refreshTokenProvider.notifier).state = refreshToken;
+
+    await refreshProfile();
+  }
+
+  Future<void> refreshProfile() async {
+    final token = _ref.read(authTokenProvider);
+    if (token == null || token.isEmpty) return;
+
+    try {
+      final dio = _ref.read(dioProvider);
+      final response = await dio.get(ApiConfig.userMe, options: Options(extra: {'showLoading': false}));
+      final data = response.data['data'] as Map<String, dynamic>?;
+      if (data == null) return;
+
+      final userId = data['id'] as String? ?? state.userId ?? '';
+      final username = data['username'] as String? ?? state.username ?? '';
+      final email = data['email'] as String? ?? state.email ?? '';
+      final fullName = data['fullName'] as String? ?? state.fullName ?? '';
+
+      state = state.copyWith(
+        isAuthenticated: true,
+        userId: userId,
+        username: username,
+        email: email,
+        fullName: fullName,
+      );
+
+      await _storage.write(key: _kUserId, value: userId);
+      await _storage.write(key: _kUsername, value: username);
+      await _storage.write(key: _kEmail, value: email);
+      await _storage.write(key: _kFullName, value: fullName);
+    } catch (_) {}
   }
 
   /// 登录
