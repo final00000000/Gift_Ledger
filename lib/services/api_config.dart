@@ -1,12 +1,12 @@
 /// API 配置
 class ApiConfig {
   // 编译时可通过 --dart-define=API_BASE_URL=http://xxx 覆盖
-  // Android 真机：flutter run --dart-define=API_BASE_URL=http://192.168.x.x:8081
-  // Android 模拟器默认：http://10.0.2.2:8081
-  // Windows 桌面端：http://localhost:8081
+  // 当前开发机局域网 IP：http://192.168.1.9:8081
+  // Android 真机默认连局域网地址；Android 模拟器请显式传入 http://10.0.2.2:8081
+  // Windows 桌面端请显式传入 http://localhost:8081
   static const String baseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'http://10.0.2.2:8081',
+    defaultValue: 'http://192.168.1.9:8081',
   );
 
   // 超时配置
